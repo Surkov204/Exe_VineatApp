@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import 'screens.dart';
@@ -19,7 +20,15 @@ class VineatApp extends StatelessWidget {
           primary: green,
           surface: Colors.white,
         ),
-        fontFamily: 'Arial',
+        fontFamily: 'Roboto',
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          },
+        ),
+        splashFactory: InkSparkle.splashFactory,
+        visualDensity: VisualDensity.standard,
         textTheme: const TextTheme(
           headlineSmall: TextStyle(
             fontWeight: FontWeight.w800,
@@ -71,7 +80,31 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(index: _index, children: _pages),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          for (var index = 0; index < _pages.length; index++)
+            IgnorePointer(
+              ignoring: index != _index,
+              child: TickerMode(
+                enabled: index == _index,
+                child: AnimatedOpacity(
+                  opacity: index == _index ? 1 : 0,
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeInOut,
+                  child: AnimatedSlide(
+                    offset: index == _index
+                        ? Offset.zero
+                        : const Offset(0.025, 0),
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    child: _pages[index],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         height: 68,
         selectedIndex: _index,

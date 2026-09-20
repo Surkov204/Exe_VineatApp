@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'global_search.dart';
+import 'inventory_store.dart';
 
 const _green = Color(0xFF079669);
 const _ink = Color(0xFF253043);
@@ -71,6 +72,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
+  Future<void> _resetDemo() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Đặt lại tủ lạnh mẫu?'),
+        content: const Text(
+          'Tủ lạnh sẽ trở về dữ liệu mẫu để bạn chạy lại kịch bản trình diễn.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Đặt lại'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await resetDemoInventory();
+    if (mounted) _message('Đã đặt lại tủ lạnh mẫu');
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: const Color(0xFFFAFAFB),
@@ -113,13 +139,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         const SizedBox(width: 4),
         IconButton.filledTonal(
-          onPressed: () {},
+          tooltip: 'Thông báo',
+          onPressed: () => _message('Bạn chưa có thông báo mới'),
           icon: const Icon(Icons.notifications_none),
           style: IconButton.styleFrom(backgroundColor: const Color(0xFFF3F4F6)),
         ),
         const SizedBox(width: 4),
         IconButton.filledTonal(
-          onPressed: () {},
+          tooltip: 'Hồ sơ hiện tại',
+          onPressed: () => _message('Bạn đang ở trang hồ sơ'),
           icon: const Icon(Icons.person_outline),
           style: IconButton.styleFrom(
             backgroundColor: const Color(0xFFD9FAEA),
@@ -173,7 +201,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                     Text(
-                      '$role · Tham gia từ 01/2026',
+                      '$role · Tham gia từ ${DateTime.now().year}',
                       style: const TextStyle(fontSize: 11, color: _muted),
                     ),
                     const SizedBox(height: 4),
@@ -351,7 +379,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(
             children: [
               const _AboutRow('Phiên bản', '1.0.0-beta'),
-              const _AboutRow('Cập nhật lần cuối', '26/05/2026'),
+              _AboutRow(
+                'Cập nhật lần cuối',
+                '${DateTime.now().day.toString().padLeft(2, '0')}/'
+                '${DateTime.now().month.toString().padLeft(2, '0')}/'
+                '${DateTime.now().year}',
+              ),
               _LinkRow(
                 'Điều khoản sử dụng',
                 () => _message('Đang mở điều khoản sử dụng'),
@@ -362,6 +395,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               _LinkRow('Liên hệ hỗ trợ', () => _message('Đang mở kênh hỗ trợ')),
             ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        OutlinedButton.icon(
+          onPressed: _resetDemo,
+          icon: const Icon(Icons.restart_alt),
+          label: const Text('Đặt lại tủ lạnh mẫu'),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            foregroundColor: _green,
           ),
         ),
         const SizedBox(height: 18),

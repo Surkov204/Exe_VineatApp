@@ -327,7 +327,14 @@ class RecipeDetailScreen extends StatelessWidget {
                         children: [
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: () {},
+                              onPressed: () => ScaffoldMessenger.of(context)
+                                  .showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Đã tạo nội dung chia sẻ món ăn',
+                                      ),
+                                    ),
+                                  ),
                               icon: const Icon(Icons.share_outlined, size: 17),
                               label: const Text('Chia sẻ'),
                             ),
