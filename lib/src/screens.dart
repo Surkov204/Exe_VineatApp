@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'food_detail.dart';
 import 'global_search.dart';
+import 'inventory_store.dart';
 import 'profile_screen.dart';
 import 'recipe_detail.dart';
 
@@ -12,27 +15,9 @@ const _ink = Color(0xFF253043);
 const _muted = Color(0xFF98A2B3);
 const _assetRoot = 'design_reference/home/page_files/';
 
-typedef FoodSummary = (String, String, String, int);
-
-final inventoryFoods = <FoodSummary>[
-  ('Rau muống', '2 bó · 15.000đ', 'Còn 2 ngày', 0),
-  ('Cà chua', '5 quả · 25.000đ', 'Tươi ngon', 1),
-  ('Thịt heo ba chỉ', '500 gram · 65.000đ', 'Còn 3 ngày', 2),
-  ('Cá basa fillet', '3 miếng · 45.000đ', 'Hết hạn', 3),
-  ('Trứng gà', '10 quả · 35.000đ', 'Tươi ngon', 4),
-  ('Cải thảo', '1 cây · 20.000đ', 'Tươi ngon', 5),
-  ('Gạo ST25', '5 kg · 175.000đ', 'Tươi ngon', 6),
-  ('Nước mắm Nam Ngư', '1 chai · 42.000đ', 'Tươi ngon', 7),
-  ('Sữa tươi Vinamilk', '2 hộp · 32.000đ', 'Tươi ngon', 8),
-  ('Hành lá', '1 bó · 3.000đ', 'Tươi ngon', 9),
-];
-
-final inventoryRevision = ValueNotifier<int>(0);
-
-void addFoodsToInventory(Iterable<FoodSummary> foods) {
-  inventoryFoods.addAll(foods);
-  inventoryRevision.value++;
-}
+String _shortDate(DateTime date) =>
+    '${date.day.toString().padLeft(2, '0')}/'
+    '${date.month.toString().padLeft(2, '0')}/${date.year}';
 
 class BrandHeader extends StatelessWidget {
   const BrandHeader({
@@ -175,15 +160,45 @@ class _FridgeScreenState extends State<FridgeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    const dayNames = [
+      'Thứ Hai',
+      'Thứ Ba',
+      'Thứ Tư',
+      'Thứ Năm',
+      'Thứ Sáu',
+      'Thứ Bảy',
+      'Chủ Nhật',
+    ];
+    final now = DateTime.now();
+    final today = '${dayNames[now.weekday - 1]}, ${now.day} tháng ${now.month}';
     return ValueListenableBuilder<int>(
       valueListenable: inventoryRevision,
-      builder: (context, _, __) => Stack(
-        children: [
+      builder: (_, _, _) {
+        final expiredCount = inventoryFoods.where((food) => food.$3 == 'Hết hạn').length;
+        final warningCount = inventoryFoods.where((food) => food.$3.contains('Còn')).length;
+        final freshCount = inventoryFoods.length - expiredCount - warningCount;
+        int priceOf(FoodSummary food) {
+          final parts = food.$2.split('·');
+          final raw = parts.length > 1 ? parts.last : parts.first;
+          return int.tryParse(raw.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+        }
+        String vnd(int value) =>
+            '${value.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => '.')}đ';
+        final totalValue = inventoryFoods.fold<int>(
+          0,
+          (sum, food) => sum + priceOf(food),
+        );
+        final expiredValue = inventoryFoods
+            .where((food) => food.$3 == 'Hết hạn')
+            .fold<int>(0, (sum, food) => sum + priceOf(food));
+        final wasteRatio = totalValue == 0 ? 0.0 : expiredValue / totalValue;
+        return Stack(
+          children: [
           Column(
             children: [
-        const BrandHeader(
+        BrandHeader(
           title: 'Tủ lạnh của bạn',
-          subtitle: 'Chủ Nhật, 19 tháng 7',
+          subtitle: today,
           search: true,
         ),
         Expanded(
@@ -197,31 +212,31 @@ class _FridgeScreenState extends State<FridgeScreen> {
                 mainAxisSpacing: 10,
                 crossAxisSpacing: 10,
                 childAspectRatio: 2.35,
-                children: const [
+                children: [
                   _StatTile(
                     'Tổng số món',
-                    '16',
+                    '${inventoryFoods.length}',
                     Icons.kitchen_outlined,
                     Color(0xFFE9FAF3),
                     _green,
                   ),
                   _StatTile(
                     'Còn tươi',
-                    '10',
+                    '$freshCount',
                     Icons.eco_outlined,
                     Color(0xFFE9FAF0),
                     Color(0xFF16A34A),
                   ),
                   _StatTile(
                     'Sắp hết hạn',
-                    '5',
+                    '$warningCount',
                     Icons.warning_amber,
                     Color(0xFFFFF8E8),
                     Color(0xFFF59E0B),
                   ),
                   _StatTile(
                     'Đã hết hạn',
-                    '1',
+                    '$expiredCount',
                     Icons.cancel_outlined,
                     Color(0xFFFFF0F1),
                     Color(0xFFEF5350),
@@ -235,7 +250,7 @@ class _FridgeScreenState extends State<FridgeScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Row(
+                      Row(
                         children: [
                           Icon(
                             Icons.timer_outlined,
@@ -252,7 +267,7 @@ class _FridgeScreenState extends State<FridgeScreen> {
                           ),
                           Spacer(),
                           Text(
-                            '5 sắp hết hạn',
+                            '$warningCount sắp hết hạn',
                             style: TextStyle(fontSize: 10, color: _muted),
                           ),
                         ],
@@ -261,12 +276,16 @@ class _FridgeScreenState extends State<FridgeScreen> {
                       Wrap(
                         spacing: 7,
                         runSpacing: 7,
-                        children: const [
-                          _AlertChip('Cá basa fillet', true),
-                          _AlertChip('Thịt heo ba chỉ', false),
-                          _AlertChip('Rau muống', false),
-                          _AlertChip('Thịt bò Mỹ', false),
-                        ],
+                        children: inventoryFoods
+                            .where((food) => food.$3 != 'Tươi ngon')
+                            .take(5)
+                            .map(
+                              (food) => _AlertChip(
+                                food.$1,
+                                food.$3 == 'Hết hạn',
+                              ),
+                            )
+                            .toList(),
                       ),
                     ],
                   ),
@@ -282,9 +301,17 @@ class _FridgeScreenState extends State<FridgeScreen> {
                   status: f.$3,
                   image: f.$4,
                   onDeleted: () {
-                    inventoryFoods.remove(f);
-                    inventoryRevision.value++;
+                    removeFoodFromInventory(f);
                   },
+                  onUpdated: (food) => updateFoodInInventory(
+                    f,
+                    (
+                      food.name,
+                      '${food.quantity} · ${food.price}',
+                      food.status,
+                      food.image,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 14),
@@ -293,7 +320,7 @@ class _FridgeScreenState extends State<FridgeScreen> {
                 child: Padding(
                   padding: const EdgeInsets.all(14),
                   child: Column(
-                    children: const [
+                    children: [
                       SectionTitle(
                         'Dọn tủ lạnh cuối tuần',
                         trailing: '6 món cần xử lý',
@@ -319,7 +346,7 @@ class _FridgeScreenState extends State<FridgeScreen> {
                   padding: const EdgeInsets.all(15),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
+                    children: [
                       Text(
                         'Tổng giá trị tủ lạnh',
                         style: TextStyle(
@@ -329,7 +356,7 @@ class _FridgeScreenState extends State<FridgeScreen> {
                       ),
                       SizedBox(height: 5),
                       Text(
-                        '741.000đ',
+                        vnd(totalValue),
                         style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.w900,
@@ -338,13 +365,13 @@ class _FridgeScreenState extends State<FridgeScreen> {
                       ),
                       SizedBox(height: 9),
                       LinearProgressIndicator(
-                        value: .06,
+                        value: wasteRatio,
                         color: Colors.redAccent,
                         backgroundColor: Color(0xFFF2F4F7),
                       ),
                       SizedBox(height: 6),
                       Text(
-                        '45.000đ thực phẩm đã bị bỏ phí',
+                        '${vnd(expiredValue)} thực phẩm đã hết hạn',
                         style: TextStyle(fontSize: 11, color: _muted),
                       ),
                     ],
@@ -354,9 +381,9 @@ class _FridgeScreenState extends State<FridgeScreen> {
               const SizedBox(height: 90),
             ],
           ),
-            ),
-          ],
-          ),
+        ),
+      ],
+    ),
           Positioned(
             right: 20,
             bottom: 18,
@@ -369,7 +396,8 @@ class _FridgeScreenState extends State<FridgeScreen> {
             ),
           ),
         ],
-      ),
+      );
+    },
     );
   }
 }
@@ -770,10 +798,12 @@ class _FoodTile extends StatelessWidget {
     required this.status,
     required this.image,
     required this.onDeleted,
+    required this.onUpdated,
   });
   final String name, detail, status;
   final int image;
   final VoidCallback onDeleted;
+  final ValueChanged<FoodDetailData> onUpdated;
   @override
   Widget build(BuildContext context) {
     final warning = status.contains('Còn');
@@ -783,7 +813,7 @@ class _FoodTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () async {
-          final deleted = await Navigator.of(context).push<bool>(
+          final result = await Navigator.of(context).push<Object?>(
             MaterialPageRoute(
               builder: (_) => FoodDetailScreen(
                 food: FoodDetailData.fromSummary(
@@ -795,7 +825,8 @@ class _FoodTile extends StatelessWidget {
               ),
             ),
           );
-          if (deleted == true) onDeleted();
+          if (result is FoodDetailData) onUpdated(result);
+          if (result == true) onDeleted();
         },
         child: Padding(
           padding: const EdgeInsets.all(9),
@@ -947,19 +978,22 @@ class _ScanScreenState extends State<ScanScreen>
     with SingleTickerProviderStateMixin {
   int stage = 0;
   int scanStep = 0;
+  bool flashOn = false;
+  XFile? receiptImage;
+  final imagePicker = ImagePicker();
   final selected = <int>{0, 1, 2, 3, 4, 5, 6, 7};
   final timers = <Timer>[];
   late final AnimationController rotation;
 
   final results = <(String, String, String)>[
-    ('Thịt heo ba chỉ', '500g · HSD dự kiến: 28/05/2026', '65.000đ'),
-    ('Rau muống', '2 bó · HSD dự kiến: 30/05/2026', '15.000đ'),
-    ('Cà chua', '5 quả · HSD dự kiến: 04/06/2026', '25.000đ'),
-    ('Trứng gà', '10 quả · HSD dự kiến: 12/06/2026', '35.000đ'),
-    ('Đậu hũ', '4 miếng · HSD dự kiến: 29/05/2026', '10.000đ'),
-    ('Cải thảo', '1 cây · HSD dự kiến: 02/06/2026', '20.000đ'),
-    ('Nước mắm', '1 chai · HSD dự kiến: 20/05/2027', '22.000đ'),
-    ('Hành lá', '2 bó · HSD dự kiến: 29/05/2026', '15.000đ'),
+    ('Thịt heo ba chỉ', '500g · HSD dự kiến: 3 ngày nữa', '65.000đ'),
+    ('Rau muống', '2 bó · HSD dự kiến: 2 ngày nữa', '15.000đ'),
+    ('Cà chua', '5 quả · HSD dự kiến: 7 ngày nữa', '25.000đ'),
+    ('Trứng gà', '10 quả · HSD dự kiến: 14 ngày nữa', '35.000đ'),
+    ('Đậu hũ', '4 miếng · HSD dự kiến: 3 ngày nữa', '10.000đ'),
+    ('Cải thảo', '1 cây · HSD dự kiến: 5 ngày nữa', '20.000đ'),
+    ('Nước mắm', '1 chai · HSD dự kiến: 365 ngày nữa', '22.000đ'),
+    ('Hành lá', '2 bó · HSD dự kiến: 3 ngày nữa', '15.000đ'),
   ];
 
   Future<void> _chooseTemplate() async {
@@ -1001,8 +1035,38 @@ class _ScanScreenState extends State<ScanScreen>
 
   void _voiceComingSoon() {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Nhập bằng giọng nói sẽ sớm ra mắt 🎙️')),
+      const SnackBar(content: Text('Đang mở nhập nhanh để bạn kiểm tra dữ liệu')),
     );
+    unawaited(_manualEntry());
+  }
+
+  Future<void> _pickReceipt(ImageSource source) async {
+    try {
+      final image = await imagePicker.pickImage(
+        source: source,
+        imageQuality: 82,
+        maxWidth: 1600,
+      );
+      if (image == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Chưa chọn ảnh, dùng hóa đơn mẫu')),
+        );
+        _startScan();
+        return;
+      }
+      if (!mounted) return;
+      setState(() => receiptImage = image);
+      _startScan();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không mở được camera, đang dùng hóa đơn mẫu'),
+        ),
+      );
+      _startScan();
+    }
   }
 
   void _addSelectedToFridge() {
@@ -1037,14 +1101,13 @@ class _ScanScreenState extends State<ScanScreen>
 
   @override
   void dispose() {
-    for (final timer in timers) {
-      timer.cancel();
-    }
+    _cancelScanTimers();
     rotation.dispose();
     super.dispose();
   }
 
   void _startScan() {
+    _cancelScanTimers();
     setState(() {
       stage = 1;
       scanStep = 0;
@@ -1069,15 +1132,20 @@ class _ScanScreenState extends State<ScanScreen>
     );
   }
 
-  void _reset() {
+  void _cancelScanTimers() {
     for (final timer in timers) {
       timer.cancel();
     }
     timers.clear();
+  }
+
+  void _reset() {
+    _cancelScanTimers();
     rotation.reset();
     setState(() {
       stage = 0;
       scanStep = 0;
+      receiptImage = null;
       selected
         ..clear()
         ..addAll(List.generate(results.length, (index) => index));
@@ -1107,6 +1175,18 @@ class _ScanScreenState extends State<ScanScreen>
                 ),
                 child: Stack(
                   children: [
+                    if (receiptImage != null)
+                      Positioned.fill(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: Image.file(
+                            File(receiptImage!.path),
+                            fit: BoxFit.cover,
+                            color: Colors.black38,
+                            colorBlendMode: BlendMode.darken,
+                          ),
+                        ),
+                      ),
                     const Align(
                       alignment: Alignment.topCenter,
                       child: Padding(
@@ -1140,15 +1220,18 @@ class _ScanScreenState extends State<ScanScreen>
                       child: Column(
                         children: [
                           IconButton.filled(
-                            onPressed: () {},
+                            tooltip: 'Bật/tắt đèn flash',
+                            onPressed: () => setState(() => flashOn = !flashOn),
                             icon: const Icon(Icons.flash_on),
                             style: IconButton.styleFrom(
-                              backgroundColor: Colors.white24,
+                              backgroundColor:
+                                  flashOn ? _green : Colors.white24,
                             ),
                           ),
                           const SizedBox(height: 8),
                           IconButton.filled(
-                            onPressed: () {},
+                            tooltip: 'Dùng ảnh hóa đơn mẫu',
+                            onPressed: () => _pickReceipt(ImageSource.gallery),
                             icon: const Icon(Icons.image_outlined),
                             style: IconButton.styleFrom(
                               backgroundColor: Colors.white24,
@@ -1172,12 +1255,13 @@ class _ScanScreenState extends State<ScanScreen>
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     IconButton.filledTonal(
-                      onPressed: () {},
+                      tooltip: 'Chọn ảnh hóa đơn mẫu',
+                      onPressed: () => _pickReceipt(ImageSource.gallery),
                       icon: const Icon(Icons.image_outlined),
                     ),
                     const SizedBox(width: 28),
                     InkWell(
-                      onTap: _startScan,
+                      onTap: () => _pickReceipt(ImageSource.camera),
                       customBorder: const CircleBorder(),
                       child: Container(
                         width: 70,
@@ -1252,18 +1336,22 @@ class _ScanScreenState extends State<ScanScreen>
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
-                  children: const [
+                  children: [
                     SectionTitle('Quét gần đây', trailing: 'Xem tất cả'),
                     SizedBox(height: 10),
-                    _RecentScan('Winmart', '25/05/2026 · 12 món', '385.000đ'),
+                    _RecentScan(
+                      'Winmart',
+                      '${_shortDate(DateTime.now().subtract(const Duration(days: 2)))} · 12 món',
+                      '385.000đ',
+                    ),
                     _RecentScan(
                       'Bách Hóa Xanh',
-                      '22/05/2026 · 8 món',
+                      '${_shortDate(DateTime.now().subtract(const Duration(days: 5)))} · 8 món',
                       '156.000đ',
                     ),
                     _RecentScan(
                       'Co.op Mart',
-                      '18/05/2026 · 15 món',
+                      '${_shortDate(DateTime.now().subtract(const Duration(days: 9)))} · 15 món',
                       '520.000đ',
                     ),
                   ],
@@ -1718,7 +1806,7 @@ class _ScanningCard extends StatelessWidget {
           ),
           const SizedBox(height: 30),
           const Text(
-            'Đang quét hóa đơn...',
+            'Đang xử lý hóa đơn...',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w900,
@@ -1727,7 +1815,7 @@ class _ScanningCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           const Text(
-            'AI đang nhận diện từng mặt hàng từ\nhóa đơn của bạn',
+            'Đang đọc ảnh và chuẩn bị dữ liệu\nđể bạn kiểm tra trước khi lưu',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 14,
@@ -2141,11 +2229,11 @@ class _RecipesScreenState extends State<RecipesScreen> {
                   color: const Color(0xFFE7FAF3),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Column(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Có 12 món phù hợp',
+                      'Có ${recipes.length} món phù hợp',
                       style: TextStyle(
                         fontWeight: FontWeight.w800,
                         color: _ink,
@@ -2153,7 +2241,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
                     ),
                     SizedBox(height: 3),
                     Text(
-                      'Trong đó 6 món có sẵn ≥50% nguyên liệu',
+                      'Ưu tiên món có từ 50% nguyên liệu trong tủ',
                       style: TextStyle(fontSize: 10, color: _muted),
                     ),
                   ],
@@ -2369,7 +2457,8 @@ class ShoppingScreen extends StatefulWidget {
 class _ShoppingScreenState extends State<ShoppingScreen> {
   final checked = <int>{4, 6};
   int selectedCategory = 0;
-  final items = <(String, String, String, String, String)>[
+  int _shoppingMutationRevision = 0;
+  final items = <ShoppingSummary>[
     (
       'Thịt gà ta',
       '1 kg · Mua con gà ta nguyên con, làm sẵn',
@@ -2417,8 +2506,35 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
     ),
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_restoreShopping());
+  }
+
+  Future<void> _restoreShopping() async {
+    final revisionAtStart = _shoppingMutationRevision;
+    final snapshot = await restoreShopping();
+    if (snapshot == null || !mounted ||
+        revisionAtStart != _shoppingMutationRevision) {
+      return;
+    }
+    setState(() {
+      items
+        ..clear()
+        ..addAll(snapshot.items);
+      checked
+        ..clear()
+        ..addAll(snapshot.checked.where((index) => index < items.length));
+    });
+  }
+
+  void _persistShopping() {
+    unawaited(persistShopping(items, checked));
+  }
+
   Future<void> _showAddItemDialog() async {
-    final result = await showDialog<(String, String, String, String, String)>(
+    final result = await showDialog<ShoppingSummary>(
       context: context,
       barrierColor: Colors.black45,
       builder: (_) => const AddShoppingItemDialog(),
@@ -2428,6 +2544,8 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
         items.add(result);
         selectedCategory = 0;
       });
+      _shoppingMutationRevision++;
+      _persistShopping();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Đã thêm ${result.$1} vào danh sách')),
       );
@@ -2446,6 +2564,8 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
         ..clear()
         ..addAll(shiftedChecked);
     });
+    _shoppingMutationRevision++;
+    _persistShopping();
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -2463,6 +2583,8 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
               items.insert(index, removed);
               checked.add(index);
             });
+            _shoppingMutationRevision++;
+            _persistShopping();
           },
         ),
       ),
@@ -2558,11 +2680,15 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                           index: e.key,
                           item: e.value,
                           checked: checked.contains(e.key),
-                          onChanged: () => setState(
-                            () => checked.contains(e.key)
-                                ? checked.remove(e.key)
-                                : checked.add(e.key),
-                          ),
+                           onChanged: () {
+                             setState(
+                               () => checked.contains(e.key)
+                                   ? checked.remove(e.key)
+                                   : checked.add(e.key),
+                             );
+                             _shoppingMutationRevision++;
+                             _persistShopping();
+                           },
                           onDelete: () => _deleteShoppingItem(e.key),
                         ),
                       )
@@ -2626,7 +2752,7 @@ class _ShoppingItem extends StatelessWidget {
     required this.onDelete,
   });
   final int index;
-  final (String, String, String, String, String) item;
+  final ShoppingSummary item;
   final bool checked;
   final VoidCallback onChanged;
   final VoidCallback onDelete;
@@ -2990,7 +3116,28 @@ class _FormLabel extends StatelessWidget {
 class ReportsScreen extends StatelessWidget {
   const ReportsScreen({super.key});
   @override
-  Widget build(BuildContext context) => Column(
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: inventoryRevision,
+      builder: (context, _, _) {
+        int priceOf(FoodSummary food) {
+          final parts = food.$2.split('·');
+          final raw = parts.length > 1 ? parts.last : parts.first;
+          return int.tryParse(raw.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+        }
+        String vnd(int value) =>
+            '${value.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => '.')}đ';
+        final totalValue = inventoryFoods.fold<int>(
+          0,
+          (sum, food) => sum + priceOf(food),
+        );
+        final expiredValue = inventoryFoods
+            .where((food) => food.$3 == 'Hết hạn')
+            .fold<int>(0, (sum, food) => sum + priceOf(food));
+        final wastePercent = totalValue == 0
+            ? 0
+            : ((expiredValue / totalValue) * 100).round();
+        return Column(
     children: [
       const BrandHeader(),
       Expanded(
@@ -3004,32 +3151,32 @@ class ReportsScreen extends StatelessWidget {
               mainAxisSpacing: 10,
               crossAxisSpacing: 10,
               childAspectRatio: 1.45,
-              children: const [
+              children: [
                 _ReportStat(
-                  'Tổng tiết kiệm (5 tháng)',
-                  '760.000đ',
-                  'Giảm 52% lãng phí',
+                  'Giá trị trong tủ hiện tại',
+                  vnd(totalValue),
+                  '${inventoryFoods.length} thực phẩm đang theo dõi',
                   Icons.savings_outlined,
                   Color(0xFFE8FBF4),
                   _green,
                 ),
                 _ReportStat(
-                  'Tổng lãng phí',
-                  '345.000đ',
-                  '-7.5kg thực phẩm',
+                  'Giá trị đã hết hạn',
+                  vnd(expiredValue),
+                  'Cần xử lý sớm',
                   Icons.account_balance_wallet_outlined,
                   Color(0xFFFFEFF0),
                   Colors.redAccent,
                 ),
                 _ReportStat(
                   'Tỉ lệ lãng phí tháng này',
-                  '6%',
-                  '45.000đ / 741.000đ',
+                  '$wastePercent%',
+                  '${vnd(expiredValue)} / ${vnd(totalValue)}',
                   Icons.emoji_events_outlined,
                   Color(0xFFFFF8E5),
                   Colors.orange,
                 ),
-                _ReportStat(
+                const _ReportStat(
                   'Thành tựu',
                   '6/9',
                   'Đã mở khóa',
@@ -3203,13 +3350,17 @@ class ReportsScreen extends StatelessWidget {
                     style: TextStyle(fontWeight: FontWeight.w800, color: _ink),
                   ),
                   const SizedBox(height: 5),
-                  const Text(
-                    'Tháng này gia đình bạn đã tiết kiệm 180.000đ',
+                  Text(
+                    'Tổng giá trị đang theo dõi: ${vnd(totalValue)}',
                     style: TextStyle(fontSize: 11, color: _muted),
                   ),
                   const SizedBox(height: 12),
                   FilledButton.icon(
-                    onPressed: () {},
+                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Đã tạo ảnh thành tích để chia sẻ'),
+                      ),
+                    ),
                     icon: const Icon(Icons.share, size: 17),
                     label: const Text('Chia sẻ lên mạng xã hội'),
                   ),
@@ -3221,7 +3372,10 @@ class ReportsScreen extends StatelessWidget {
         ),
       ),
     ],
-  );
+        );
+      },
+    );
+  }
 }
 
 class _ReportStat extends StatelessWidget {

@@ -32,19 +32,32 @@ class FoodDetailData {
     required int image,
   }) {
     final parts = detail.split('·').map((e) => e.trim()).toList();
+    final now = DateTime.now();
+    final daysRemaining = int.tryParse(
+      RegExp(r'\d+').firstMatch(status)?.group(0) ?? '',
+    );
+    final expiry = status == 'Hết hạn'
+        ? now.subtract(const Duration(days: 1))
+        : status.contains('Còn')
+        ? now.add(Duration(days: daysRemaining ?? 2))
+        : now.add(const Duration(days: 14));
     return FoodDetailData(
       name: name,
       category: _categoryFor(name),
       quantity: parts.isEmpty ? detail : parts.first,
       price: parts.length > 1 ? parts[1] : '—',
-      purchaseDate: '24/5/2026',
-      expiryDate: status == 'Hết hạn' ? '28/5/2026' : '28/7/2026',
+      purchaseDate: _formatDate(now.subtract(const Duration(days: 3))),
+      expiryDate: _formatDate(expiry),
       status: status,
       addedBy: image.isEven ? 'Mẹ' : 'Bố',
       note: _noteFor(name),
       image: image,
     );
   }
+
+  static String _formatDate(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}/'
+      '${date.month.toString().padLeft(2, '0')}/${date.year}';
 
   static String _categoryFor(String name) {
     if (name.contains('Thịt') ||
@@ -110,10 +123,7 @@ class _FoodDetailScreenState extends State<FoodDetailScreen> {
       builder: (_) => _EditFoodDialog(food: food),
     );
     if (result != null && mounted) {
-      setState(() => food = result);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đã cập nhật thông tin thực phẩm')),
-      );
+      Navigator.pop(context, result);
     }
   }
 

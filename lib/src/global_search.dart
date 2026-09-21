@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'food_detail.dart';
+import 'inventory_store.dart';
 import 'recipe_detail.dart';
 
 const _green = Color(0xFF079669);
@@ -22,10 +23,32 @@ Future<void> showGlobalSearch(BuildContext context) async {
   );
   if (result == null || !context.mounted) return;
   if (result.food != null) {
-    await Navigator.push(
+    final detailResult = await Navigator.push<Object?>(
       context,
       MaterialPageRoute(builder: (_) => FoodDetailScreen(food: result.food!)),
     );
+    FoodSummary? original;
+    for (final food in inventoryFoods) {
+      if (food.$1 == result.food!.name) {
+        original = food;
+        break;
+      }
+    }
+    if (original != null) {
+      if (detailResult is FoodDetailData) {
+        updateFoodInInventory(
+          original,
+          (
+            detailResult.name,
+            '${detailResult.quantity} · ${detailResult.price}',
+            detailResult.status,
+            detailResult.image,
+          ),
+        );
+      } else if (detailResult == true) {
+        removeFoodFromInventory(original);
+      }
+    }
   } else if (result.recipe != null) {
     await Navigator.push(
       context,
@@ -46,68 +69,16 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
   int tab = 0;
   String query = '';
 
-  final foods = <FoodDetailData>[
-    FoodDetailData.fromSummary(
-      name: 'Rau muống',
-      detail: '2 bó · 15.000đ',
-      status: 'Còn 2 ngày',
-      image: 0,
-    ),
-    FoodDetailData.fromSummary(
-      name: 'Cà chua',
-      detail: '5 quả · 25.000đ',
-      status: 'Tươi ngon',
-      image: 1,
-    ),
-    FoodDetailData.fromSummary(
-      name: 'Thịt heo ba chỉ',
-      detail: '500 gram · 65.000đ',
-      status: 'Còn 3 ngày',
-      image: 2,
-    ),
-    FoodDetailData.fromSummary(
-      name: 'Cá basa fillet',
-      detail: '3 miếng · 45.000đ',
-      status: 'Hết hạn',
-      image: 3,
-    ),
-    FoodDetailData.fromSummary(
-      name: 'Trứng gà',
-      detail: '10 quả · 35.000đ',
-      status: 'Tươi ngon',
-      image: 4,
-    ),
-    FoodDetailData.fromSummary(
-      name: 'Cải thảo',
-      detail: '1 cây · 20.000đ',
-      status: 'Tươi ngon',
-      image: 5,
-    ),
-    FoodDetailData.fromSummary(
-      name: 'Gạo ST25',
-      detail: '5 kg · 175.000đ',
-      status: 'Tươi ngon',
-      image: 6,
-    ),
-    FoodDetailData.fromSummary(
-      name: 'Nước mắm Nam Ngư',
-      detail: '1 chai · 42.000đ',
-      status: 'Tươi ngon',
-      image: 7,
-    ),
-    FoodDetailData.fromSummary(
-      name: 'Sữa tươi Vinamilk',
-      detail: '2 hộp · 32.000đ',
-      status: 'Tươi ngon',
-      image: 8,
-    ),
-    FoodDetailData.fromSummary(
-      name: 'Hành lá',
-      detail: '1 bó · 3.000đ',
-      status: 'Tươi ngon',
-      image: 9,
-    ),
-  ];
+  List<FoodDetailData> get foods => inventoryFoods
+      .map(
+        (food) => FoodDetailData.fromSummary(
+          name: food.$1,
+          detail: food.$2,
+          status: food.$3,
+          image: food.$4,
+        ),
+      )
+      .toList();
 
   final recipes = <RecipeDetailData>[
     RecipeDetailData.fromSummary(
