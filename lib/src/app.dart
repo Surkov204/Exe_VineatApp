@@ -66,8 +66,11 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends State<AppShell>
+    with SingleTickerProviderStateMixin {
   int _index = 0;
+  int _transitionDirection = 1;
+  late final AnimationController _tabTransition;
 
   static const _pages = [
     FridgeScreen(),
@@ -78,32 +81,46 @@ class _AppShellState extends State<AppShell> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _tabTransition = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+      value: 1,
+    );
+  }
+
+  @override
+  void dispose() {
+    _tabTransition.dispose();
+    super.dispose();
+  }
+
+  void _selectTab(int value) {
+    if (value == _index) return;
+    setState(() {
+      _transitionDirection = value > _index ? 1 : -1;
+      _index = value;
+    });
+    _tabTransition.forward(from: 0);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          for (var index = 0; index < _pages.length; index++)
-            IgnorePointer(
-              ignoring: index != _index,
-              child: TickerMode(
-                enabled: index == _index,
-                child: AnimatedOpacity(
-                  opacity: index == _index ? 1 : 0,
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeInOut,
-                  child: AnimatedSlide(
-                    offset: index == _index
-                        ? Offset.zero
-                        : const Offset(0.025, 0),
-                    duration: const Duration(milliseconds: 220),
-                    curve: Curves.easeOutCubic,
-                    child: _pages[index],
-                  ),
-                ),
-              ),
+      body: AnimatedBuilder(
+        animation: _tabTransition,
+        child: IndexedStack(index: _index, children: _pages),
+        builder: (context, child) {
+          final progress = Curves.easeOutCubic.transform(_tabTransition.value);
+          return Opacity(
+            opacity: .88 + (.12 * progress),
+            child: Transform.translate(
+              offset: Offset(_transitionDirection * 10 * (1 - progress), 0),
+              child: child,
             ),
-        ],
+          );
+        },
       ),
       bottomNavigationBar: NavigationBar(
         height: 68,
@@ -111,7 +128,7 @@ class _AppShellState extends State<AppShell> {
         backgroundColor: Colors.white,
         indicatorColor: const Color(0xFFE7F8F1),
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        onDestinationSelected: (value) => setState(() => _index = value),
+        onDestinationSelected: _selectTab,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
