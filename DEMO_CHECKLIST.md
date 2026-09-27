@@ -47,7 +47,7 @@ flutter build apk --release
 ## Sau buổi demo
 
 1. Chạy migration Supabase, thêm auth/household sync và repository layer.
-2. Thay kết quả scan mẫu bằng OCR thật có trạng thái `processing/review/failed`.
+2. Nối lịch sử OCR với các trạng thái `processing/review/failed` vào Supabase.
 3. Khi danh sách đủ dài, bổ sung skeleton loading, infinite scroll và cache
    phân trang; không dùng parallax cho các màn hình nghiệp vụ ngắn nếu không
    giúp thao tác rõ hơn.

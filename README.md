@@ -37,8 +37,9 @@ Checklist thao tác và tiêu chí nghiệm thu nằm trong
   được áp dụng vào project hosted trong môi trường hiện tại.
 - Dữ liệu tủ lạnh và danh sách đi chợ được lưu trên thiết bị; nếu cache hỏng,
   app tự quay về dữ liệu mẫu để vẫn mở được.
-- Scan đã có chọn ảnh/chụp ảnh và luồng kết quả mẫu; OCR thật vẫn là bước tiếp
-  theo sau khi chốt backend/parser hóa đơn.
+- Scan dùng ML Kit OCR trên Android/iOS, sau đó parser nhận diện cửa hàng,
+  ngày mua, dòng sản phẩm, số lượng và giá. Người dùng có thể sửa kết quả
+  trước khi thêm vào tủ; dữ liệu vẫn được lưu cục bộ cho tới khi nối Supabase.
 
 ## Kiểm chứng hiện tại
 
