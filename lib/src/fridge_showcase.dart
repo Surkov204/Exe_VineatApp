@@ -125,7 +125,11 @@ class _FridgeViewer extends StatefulWidget {
 
 class _FridgeViewerState extends State<_FridgeViewer>
     with WidgetsBindingObserver {
+  static const _modelLoadTimeout = Duration(seconds: 7);
+
+  Timer? _viewerStartDelay;
   Timer? _loadWatchdog;
+  bool _viewerReady = false;
   bool _modelLoaded = false;
   bool _fallback = false;
   bool _appResumed = true;
@@ -140,6 +144,7 @@ class _FridgeViewerState extends State<_FridgeViewer>
   bool get _canRender3d =>
       widget.active &&
       _appResumed &&
+      _viewerReady &&
       !_fallback &&
       _supportsModelViewerPlatform;
 
@@ -147,18 +152,22 @@ class _FridgeViewerState extends State<_FridgeViewer>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _startLoadWatchdog();
+    _scheduleViewerStart();
   }
 
   @override
   void didUpdateWidget(covariant _FridgeViewer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.active == oldWidget.active) return;
+    _viewerStartDelay?.cancel();
     _loadWatchdog?.cancel();
     if (widget.active) {
       _modelLoaded = false;
       _fallback = false;
-      _startLoadWatchdog();
+      _viewerReady = false;
+      _scheduleViewerStart();
+    } else {
+      _viewerReady = false;
     }
   }
 
@@ -167,15 +176,41 @@ class _FridgeViewerState extends State<_FridgeViewer>
     final resumed = state == AppLifecycleState.resumed;
     if (_appResumed == resumed) return;
     _appResumed = resumed;
-    if (resumed && widget.active && !_modelLoaded) _startLoadWatchdog();
-    if (!resumed) _loadWatchdog?.cancel();
+    if (resumed && widget.active && !_fallback) {
+      _modelLoaded = false;
+      _viewerReady = false;
+      _scheduleViewerStart();
+    }
+    if (!resumed) {
+      _viewerStartDelay?.cancel();
+      _loadWatchdog?.cancel();
+      _viewerReady = false;
+      _modelLoaded = false;
+    }
     if (mounted) setState(() {});
+  }
+
+  void _scheduleViewerStart() {
+    _viewerStartDelay?.cancel();
+    if (!_supportsModelViewerPlatform ||
+        !widget.active ||
+        !_appResumed ||
+        _fallback) {
+      return;
+    }
+    // Let the first useful Flutter frame appear before constructing the
+    // Android WebView used by model_viewer_plus.
+    _viewerStartDelay = Timer(const Duration(milliseconds: 450), () {
+      if (!mounted || !widget.active || !_appResumed || _fallback) return;
+      setState(() => _viewerReady = true);
+      _startLoadWatchdog();
+    });
   }
 
   void _startLoadWatchdog() {
     _loadWatchdog?.cancel();
     if (!_canRender3d || _modelLoaded) return;
-    _loadWatchdog = Timer(const Duration(seconds: 12), () {
+    _loadWatchdog = Timer(_modelLoadTimeout, () {
       if (mounted && !_modelLoaded) setState(() => _fallback = true);
     });
   }
@@ -194,6 +229,7 @@ class _FridgeViewerState extends State<_FridgeViewer>
 
   @override
   void dispose() {
+    _viewerStartDelay?.cancel();
     _loadWatchdog?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -202,7 +238,6 @@ class _FridgeViewerState extends State<_FridgeViewer>
   @override
   Widget build(BuildContext context) {
     if (!_canRender3d) return const _FridgeRender();
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -215,12 +250,16 @@ class _FridgeViewerState extends State<_FridgeViewer>
           ar: false,
           cameraControls: true,
           disablePan: true,
-          autoRotate: !reduceMotion,
+          // Keep manual camera controls, but avoid continuous WebView/GPU
+          // work while the user is reading the dashboard.
+          autoRotate: false,
           autoRotateDelay: 1800,
           rotationPerSecond: '5deg',
-          cameraOrbit: '22deg 74deg 2.55m',
+          // This GLB is about 1.9 m tall. A wider default camera distance
+          // keeps the full appliance inside the narrow mobile showcase.
+          cameraOrbit: '22deg 74deg 3.65m',
           minCameraOrbit: 'auto 40deg 2.1m',
-          maxCameraOrbit: 'auto 140deg 4m',
+          maxCameraOrbit: 'auto 140deg 4.6m',
           minFieldOfView: '28deg',
           maxFieldOfView: '58deg',
           cameraTarget: '0m 0m 0m',
@@ -228,8 +267,8 @@ class _FridgeViewerState extends State<_FridgeViewer>
           loading: Loading.lazy,
           reveal: Reveal.auto,
           environmentImage: 'neutral',
-          shadowIntensity: 0.55,
-          shadowSoftness: 0.75,
+          shadowIntensity: 0,
+          shadowSoftness: 0,
           debugLogging: false,
           javascriptChannels: {
             JavascriptChannel(

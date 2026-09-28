@@ -433,15 +433,12 @@ class _AppShellState extends State<AppShell>
                             final progress = Curves.easeOutCubic.transform(
                               _tabTransition.value,
                             );
-                            return Opacity(
-                              opacity: .88 + (.12 * progress),
-                              child: Transform.translate(
-                                offset: Offset(
-                                  _transitionDirection * 10 * (1 - progress),
-                                  0,
-                                ),
-                                child: child,
+                            return Transform.translate(
+                              offset: Offset(
+                                _transitionDirection * 10 * (1 - progress),
+                                0,
                               ),
+                              child: child,
                             );
                           },
                         ),

@@ -527,10 +527,12 @@ void main() {
     expect(priorityChip.hitTestable(), findsOneWidget);
     await tester.tap(priorityChip);
     await tester.pumpAndSettle();
-    final fridgeList = find.descendant(
-      of: find.byType(FridgeScreen),
-      matching: find.byType(ListView),
-    );
+    final fridgeList = find
+        .descendant(
+          of: find.byType(FridgeScreen),
+          matching: find.byType(CustomScrollView),
+        )
+        .first;
     await tester.drag(fridgeList, const Offset(0, -420));
     await tester.pumpAndSettle();
     expect(find.text('Món cần ưu tiên'), findsOneWidget);
@@ -555,7 +557,7 @@ void main() {
   ) async {
     setTestViewport(tester, const Size(320, 568));
     final stressFoods = List.generate(
-      36,
+      100,
       (index) => FoodSummary(
         name: 'Thực phẩm dài ${index + 1}',
         quantity: 1,
@@ -567,7 +569,7 @@ void main() {
     addTearDown(resetDemoInventory);
 
     // Seed the in-memory fixture in one batch so this layout-only test does
-    // not enqueue 36 persistence or household-sync operations.
+    // not enqueue persistence or household-sync operations for 100 items.
     inventoryFoods.addAll(stressFoods);
     inventoryRevision.value++;
     await tester.pumpWidget(
@@ -577,10 +579,7 @@ void main() {
           bottomNavigationBar: NavigationBar(
             selectedIndex: 0,
             destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.home),
-                label: 'Trang chủ',
-              ),
+              NavigationDestination(icon: Icon(Icons.home), label: 'Trang chủ'),
               NavigationDestination(
                 icon: Icon(Icons.document_scanner),
                 label: 'Scan',
@@ -603,19 +602,22 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    final lastFood = find.text('Thực phẩm dài 36');
-    final fridgeList = find.descendant(
-      of: find.byType(FridgeScreen),
-      matching: find.byType(ListView),
-    ).first;
+    final lastFood = find.text('Thực phẩm dài 100');
+    final fridgeList = find
+        .descendant(
+          of: find.byType(FridgeScreen),
+          matching: find.byType(CustomScrollView),
+        )
+        .first;
     expect(find.byType(FridgeScreen), findsOneWidget);
-    for (var attempt = 0; attempt < 20; attempt++) {
+    expect(lastFood, findsNothing);
+    for (var attempt = 0; attempt < 60; attempt++) {
       if (lastFood.hitTestable().evaluate().isNotEmpty) break;
       await tester.drag(fridgeList, const Offset(0, -350));
       await tester.pump(const Duration(milliseconds: 50));
     }
 
-    expect(find.text('Thực phẩm dài 36').hitTestable(), findsOneWidget);
+    expect(lastFood.hitTestable(), findsOneWidget);
     expect(find.byType(NavigationBar).hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
@@ -864,7 +866,7 @@ void main() {
 
     final fridgeList = find.descendant(
       of: find.byType(FridgeScreen),
-      matching: find.byType(ListView),
+      matching: find.byType(CustomScrollView),
     );
     await tester.drag(fridgeList.first, const Offset(0, -420));
     await tester.pumpAndSettle();

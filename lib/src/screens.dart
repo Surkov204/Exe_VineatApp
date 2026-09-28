@@ -247,236 +247,236 @@ class _FridgeScreenState extends State<FridgeScreen> {
               ),
             ),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(14),
-                children: [
-                  ValueListenableBuilder<int>(
-                    valueListenable: activeAppTabIndex,
-                    builder: (context, activeTab, _) => SmartFridgeShowcase(
-                      active: activeTab == 0,
-                      inventoryCount: inventoryFoods.length,
-                      expiringCount: warningCount + expiredCount,
-                      onInventoryTap: () =>
-                          setState(() => _showOnlyAttention = false),
-                      onExpiringTap: () =>
-                          setState(() => _showOnlyAttention = true),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  LayoutBuilder(
-                    builder: (context, constraints) => GridView.count(
-                      crossAxisCount: 2,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      mainAxisSpacing: 10,
-                      crossAxisSpacing: 10,
-                      childAspectRatio: constraints.maxWidth < 400
-                          ? 1.35
-                          : 2.35,
-                      children: [
-                        _StatTile(
-                          'Tổng số món',
-                          '${inventoryFoods.length}',
-                          Icons.kitchen_outlined,
-                          Color(0xFFE9FAF3),
-                          _green,
+              child: CustomScrollView(
+                slivers: [
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+                    sliver: SliverList(
+                      delegate: SliverChildListDelegate([
+                        ValueListenableBuilder<int>(
+                          valueListenable: activeAppTabIndex,
+                          builder: (context, activeTab, _) =>
+                              SmartFridgeShowcase(
+                                active: activeTab == 0,
+                                inventoryCount: inventoryFoods.length,
+                                expiringCount: warningCount + expiredCount,
+                                onInventoryTap: () =>
+                                    setState(() => _showOnlyAttention = false),
+                                onExpiringTap: () =>
+                                    setState(() => _showOnlyAttention = true),
+                              ),
                         ),
-                        _StatTile(
-                          'Còn tươi',
-                          '$freshCount',
-                          Icons.eco_outlined,
-                          Color(0xFFE9FAF0),
-                          Color(0xFF16A34A),
-                        ),
-                        _StatTile(
-                          'Sắp hết hạn',
-                          '$warningCount',
-                          Icons.warning_amber,
-                          Color(0xFFFFF8E8),
-                          Color(0xFFF59E0B),
-                        ),
-                        _StatTile(
-                          'Đã hết hạn',
-                          '$expiredCount',
-                          Icons.cancel_outlined,
-                          Color(0xFFFFF0F1),
-                          Color(0xFFEF5350),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(13),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
+                        const SizedBox(height: 12),
+                        LayoutBuilder(
+                          builder: (context, constraints) => GridView.count(
+                            crossAxisCount: 2,
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            mainAxisSpacing: 10,
+                            crossAxisSpacing: 10,
+                            childAspectRatio: constraints.maxWidth < 400
+                                ? 1.35
+                                : 2.35,
                             children: [
-                              const Icon(
-                                Icons.timer_outlined,
-                                color: Colors.redAccent,
-                                size: 18,
+                              _StatTile(
+                                'Tổng số món',
+                                '${inventoryFoods.length}',
+                                Icons.kitchen_outlined,
+                                Color(0xFFE9FAF3),
+                                _green,
                               ),
-                              const SizedBox(width: 6),
-                              const Expanded(
-                                child: Text(
-                                  'Cảnh báo hết hạn',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: Colors.redAccent,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
+                              _StatTile(
+                                'Còn tươi',
+                                '$freshCount',
+                                Icons.eco_outlined,
+                                Color(0xFFE9FAF0),
+                                Color(0xFF16A34A),
                               ),
-                              const SizedBox(width: 8),
-                              Flexible(
-                                child: Text(
-                                  '$warningCount sắp hết hạn',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(fontSize: 10, color: _muted),
-                                ),
+                              _StatTile(
+                                'Sắp hết hạn',
+                                '$warningCount',
+                                Icons.warning_amber,
+                                Color(0xFFFFF8E8),
+                                Color(0xFFF59E0B),
+                              ),
+                              _StatTile(
+                                'Đã hết hạn',
+                                '$expiredCount',
+                                Icons.cancel_outlined,
+                                Color(0xFFFFF0F1),
+                                Color(0xFFEF5350),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 7,
-                            runSpacing: 7,
-                            children: inventoryFoods
-                                .where((food) => food.status != 'Tươi ngon')
-                                .take(5)
-                                .map(
-                                  (food) => _AlertChip(
-                                    food.name,
-                                    food.status == 'Hết hạn',
+                        ),
+                        const SizedBox(height: 12),
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(13),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.timer_outlined,
+                                      color: Colors.redAccent,
+                                      size: 18,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    const Expanded(
+                                      child: Text(
+                                        'Cảnh báo hết hạn',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: Colors.redAccent,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Flexible(
+                                      child: Text(
+                                        '$warningCount sắp hết hạn',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: _muted,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 7,
+                                  runSpacing: 7,
+                                  children: inventoryFoods
+                                      .where(
+                                        (food) => food.status != 'Tươi ngon',
+                                      )
+                                      .take(5)
+                                      .map(
+                                        (food) => _AlertChip(
+                                          food.name,
+                                          food.status == 'Hết hạn',
+                                        ),
+                                      )
+                                      .toList(),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: SectionTitle(
+                                _showOnlyAttention
+                                    ? 'Món cần ưu tiên'
+                                    : 'Thực phẩm trong tủ',
+                                trailing: _showOnlyAttention
+                                    ? null
+                                    : 'Xem tất cả',
+                              ),
+                            ),
+                            if (_showOnlyAttention)
+                              TextButton(
+                                onPressed: () =>
+                                    setState(() => _showOnlyAttention = false),
+                                child: const Text('Bỏ lọc'),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        if (displayedFoods.isEmpty)
+                          const Card(
+                            child: Padding(
+                              padding: EdgeInsets.all(18),
+                              child: Text('Hiện chưa có món nào cần ưu tiên.'),
+                            ),
+                          ),
+                      ]),
+                    ),
+                  ),
+                  if (displayedFoods.isNotEmpty)
+                    SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          final f = displayedFoods[index];
+                          return _FoodTile(
+                            summary: f,
+                            name: f.name,
+                            detail: f.detail,
+                            status: f.status,
+                            image: f.imageIndex,
+                            onDeleted: () => removeFoodFromInventory(f),
+                            onUpdated: (food) => updateFoodInInventory(
+                              f,
+                              FoodSummary.fromLegacy(
+                                id: f.id,
+                                name: food.name,
+                                detail: '${food.quantity} · ${food.price}',
+                                status: food.status,
+                                imageIndex: food.image,
+                                imagePath: f.imagePath,
+                                note: food.note,
+                              ),
+                            ),
+                          );
+                        }, childCount: displayedFoods.length),
+                      ),
+                    ),
+                  SliverPadding(
+                    padding: const EdgeInsets.all(14),
+                    sliver: SliverList(
+                      delegate: SliverChildListDelegate([
+                        const SizedBox(height: 14),
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(15),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Tổng giá trị tủ lạnh',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: _ink,
                                   ),
-                                )
-                                .toList(),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: SectionTitle(
-                          _showOnlyAttention
-                              ? 'Món cần ưu tiên'
-                              : 'Thực phẩm trong tủ',
-                          trailing: _showOnlyAttention ? null : 'Xem tất cả',
-                        ),
-                      ),
-                      if (_showOnlyAttention)
-                        TextButton(
-                          onPressed: () =>
-                              setState(() => _showOnlyAttention = false),
-                          child: const Text('Bỏ lọc'),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  if (displayedFoods.isEmpty)
-                    const Card(
-                      child: Padding(
-                        padding: EdgeInsets.all(18),
-                        child: Text('Hiện chưa có món nào cần ưu tiên.'),
-                      ),
-                    ),
-                  ...displayedFoods.map(
-                    (f) => _FoodTile(
-                      summary: f,
-                      name: f.name,
-                      detail: f.detail,
-                      status: f.status,
-                      image: f.imageIndex,
-                      onDeleted: () {
-                        removeFoodFromInventory(f);
-                      },
-                      onUpdated: (food) => updateFoodInInventory(
-                        f,
-                        FoodSummary.fromLegacy(
-                          id: f.id,
-                          name: food.name,
-                          detail: '${food.quantity} · ${food.price}',
-                          status: food.status,
-                          imageIndex: food.image,
-                          imagePath: f.imagePath,
-                          note: food.note,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Card(
-                    color: const Color(0xFFFFF9E8),
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        children: [
-                          SectionTitle(
-                            'Dọn tủ lạnh cuối tuần',
-                            trailing: '6 món cần xử lý',
-                          ),
-                          SizedBox(height: 10),
-                          _MealSuggestion(
-                            '30 phút',
-                            'Thịt heo ba chỉ kho trứng',
-                            'Thịt heo ba chỉ · Trứng gà · Nước mắm',
-                          ),
-                          _MealSuggestion(
-                            '15 phút',
-                            'Canh rau muống nấu tôm',
-                            'Rau muống · Tôm sú · Hành lá',
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(15),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Tổng giá trị tủ lạnh',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: _ink,
+                                ),
+                                SizedBox(height: 5),
+                                Text(
+                                  vnd(totalValue),
+                                  style: TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w900,
+                                    color: _ink,
+                                  ),
+                                ),
+                                SizedBox(height: 9),
+                                LinearProgressIndicator(
+                                  value: wasteRatio,
+                                  color: Colors.redAccent,
+                                  backgroundColor: Color(0xFFF2F4F7),
+                                ),
+                                SizedBox(height: 6),
+                                Text(
+                                  '${vnd(expiredValue)} thực phẩm đã hết hạn',
+                                  style: TextStyle(fontSize: 11, color: _muted),
+                                ),
+                              ],
                             ),
                           ),
-                          SizedBox(height: 5),
-                          Text(
-                            vnd(totalValue),
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w900,
-                              color: _ink,
-                            ),
-                          ),
-                          SizedBox(height: 9),
-                          LinearProgressIndicator(
-                            value: wasteRatio,
-                            color: Colors.redAccent,
-                            backgroundColor: Color(0xFFF2F4F7),
-                          ),
-                          SizedBox(height: 6),
-                          Text(
-                            '${vnd(expiredValue)} thực phẩm đã hết hạn',
-                            style: TextStyle(fontSize: 11, color: _muted),
-                          ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(height: 90),
+                      ]),
                     ),
                   ),
-                  const SizedBox(height: 90),
                 ],
               ),
             ),
@@ -1162,63 +1162,6 @@ class _FoodTile extends StatelessWidget {
       ),
     );
   }
-}
-
-class _MealSuggestion extends StatelessWidget {
-  const _MealSuggestion(this.time, this.name, this.ingredients);
-  final String time, name, ingredients;
-  @override
-  Widget build(BuildContext context) => InkWell(
-    borderRadius: BorderRadius.circular(10),
-    onTap: () => Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => RecipeDetailScreen(
-          recipe: RecipeDetailData.fromSummary(
-            name: name,
-            time: time,
-            level: 'Vừa',
-            image: name.contains('Canh')
-                ? 11
-                : name.contains('Bò')
-                ? 12
-                : 13,
-            ingredientsText: ingredients,
-          ),
-        ),
-      ),
-    ),
-    child: Container(
-      margin: const EdgeInsets.only(bottom: 9),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '🍴 $time',
-            style: const TextStyle(
-              fontSize: 10,
-              color: Colors.orange,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 7),
-          Text(
-            name,
-            style: const TextStyle(fontWeight: FontWeight.w800, color: _ink),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            ingredients,
-            style: const TextStyle(fontSize: 10, color: _muted),
-          ),
-        ],
-      ),
-    ),
-  );
 }
 
 enum _ScanInputOrigin { recognizedReceipt, sampleTemplate, manualEntry }
