@@ -10,6 +10,8 @@ import 'food_image.dart';
 import 'global_search.dart';
 import 'inventory_store.dart';
 import 'profile_screen.dart';
+import 'receipt_models.dart';
+import 'receipt_ocr_service.dart';
 import 'recipe_detail.dart';
 
 const _green = Color(0xFF079669);
@@ -45,47 +47,55 @@ class BrandHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: _green,
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: const Icon(Icons.eco, color: Colors.white, size: 20),
-              ),
-              const SizedBox(width: 10),
-              const Text(
-                'ViNeat',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: _ink,
-                ),
-              ),
-              const Spacer(),
-              if (search)
-                IconButton.filledTonal(
-                  onPressed: () => showGlobalSearch(context),
-                  icon: const Icon(Icons.search),
-                  style: IconButton.styleFrom(
-                    backgroundColor: const Color(0xFFF3F4F6),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final showSearch = search && constraints.maxWidth >= 270;
+              return Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: _green,
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: const Icon(Icons.eco, color: Colors.white, size: 20),
                   ),
-                ),
-              const SizedBox(width: 4),
-              IconButton.filledTonal(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
-                ),
-                icon: const Icon(Icons.person_outline),
-                style: IconButton.styleFrom(
-                  backgroundColor: const Color(0xFFD9FAEA),
-                  foregroundColor: _green,
-                ),
-              ),
-            ],
+                  const SizedBox(width: 10),
+                  const Text(
+                    'ViNeat',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      color: _ink,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (showSearch)
+                    IconButton.filledTonal(
+                      onPressed: () => showGlobalSearch(context),
+                      icon: const Icon(Icons.search),
+                      style: IconButton.styleFrom(
+                        backgroundColor: const Color(0xFFF3F4F6),
+                      ),
+                    ),
+                  if (showSearch) const SizedBox(width: 4),
+                  if (constraints.maxWidth >= 220)
+                    IconButton.filledTonal(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const ProfileScreen(),
+                        ),
+                      ),
+                      icon: const Icon(Icons.person_outline),
+                      style: IconButton.styleFrom(
+                        backgroundColor: const Color(0xFFD9FAEA),
+                        foregroundColor: _green,
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
           if (title != null) ...[
             const SizedBox(height: 13),
@@ -212,43 +222,47 @@ class _FridgeScreenState extends State<FridgeScreen> {
                   child: ListView(
                     padding: const EdgeInsets.all(14),
                     children: [
-                      GridView.count(
-                        crossAxisCount: 2,
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        mainAxisSpacing: 10,
-                        crossAxisSpacing: 10,
-                        childAspectRatio: 2.35,
-                        children: [
-                          _StatTile(
-                            'Tổng số món',
-                            '${inventoryFoods.length}',
-                            Icons.kitchen_outlined,
-                            Color(0xFFE9FAF3),
-                            _green,
-                          ),
-                          _StatTile(
-                            'Còn tươi',
-                            '$freshCount',
-                            Icons.eco_outlined,
-                            Color(0xFFE9FAF0),
-                            Color(0xFF16A34A),
-                          ),
-                          _StatTile(
-                            'Sắp hết hạn',
-                            '$warningCount',
-                            Icons.warning_amber,
-                            Color(0xFFFFF8E8),
-                            Color(0xFFF59E0B),
-                          ),
-                          _StatTile(
-                            'Đã hết hạn',
-                            '$expiredCount',
-                            Icons.cancel_outlined,
-                            Color(0xFFFFF0F1),
-                            Color(0xFFEF5350),
-                          ),
-                        ],
+                      LayoutBuilder(
+                        builder: (context, constraints) => GridView.count(
+                          crossAxisCount: 2,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          mainAxisSpacing: 10,
+                          crossAxisSpacing: 10,
+                          childAspectRatio: constraints.maxWidth < 400
+                              ? 1.35
+                              : 2.35,
+                          children: [
+                            _StatTile(
+                              'Tổng số món',
+                              '${inventoryFoods.length}',
+                              Icons.kitchen_outlined,
+                              Color(0xFFE9FAF3),
+                              _green,
+                            ),
+                            _StatTile(
+                              'Còn tươi',
+                              '$freshCount',
+                              Icons.eco_outlined,
+                              Color(0xFFE9FAF0),
+                              Color(0xFF16A34A),
+                            ),
+                            _StatTile(
+                              'Sắp hết hạn',
+                              '$warningCount',
+                              Icons.warning_amber,
+                              Color(0xFFFFF8E8),
+                              Color(0xFFF59E0B),
+                            ),
+                            _StatTile(
+                              'Đã hết hạn',
+                              '$expiredCount',
+                              Icons.cancel_outlined,
+                              Color(0xFFFFF0F1),
+                              Color(0xFFEF5350),
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 12),
                       Card(
@@ -277,13 +291,15 @@ class _FridgeScreenState extends State<FridgeScreen> {
                                     ),
                                   ),
                                   const SizedBox(width: 8),
-                                  Text(
-                                    '$warningCount sắp hết hạn',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: _muted,
+                                  Flexible(
+                                    child: Text(
+                                      '$warningCount sắp hết hạn',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: _muted,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -1146,23 +1162,16 @@ class _ScanScreenState extends State<ScanScreen>
     with SingleTickerProviderStateMixin {
   int stage = 0;
   int scanStep = 0;
-  bool flashOn = false;
   XFile? receiptImage;
   final imagePicker = ImagePicker();
+  final ocrService = ReceiptOcrService();
+  bool importing = false;
+  String? scanError;
   final selected = <int>{0, 1, 2, 3, 4, 5, 6, 7};
   final timers = <Timer>[];
   late final AnimationController rotation;
 
-  final results = <(String, String, String)>[
-    ('Thịt heo ba chỉ', '500g · HSD dự kiến: 3 ngày nữa', '65.000đ'),
-    ('Rau muống', '2 bó · HSD dự kiến: 2 ngày nữa', '15.000đ'),
-    ('Cà chua', '5 quả · HSD dự kiến: 7 ngày nữa', '25.000đ'),
-    ('Trứng gà', '10 quả · HSD dự kiến: 14 ngày nữa', '35.000đ'),
-    ('Đậu hũ', '4 miếng · HSD dự kiến: 3 ngày nữa', '10.000đ'),
-    ('Cải thảo', '1 cây · HSD dự kiến: 5 ngày nữa', '20.000đ'),
-    ('Nước mắm', '1 chai · HSD dự kiến: 365 ngày nữa', '22.000đ'),
-    ('Hành lá', '2 bó · HSD dự kiến: 3 ngày nữa', '15.000đ'),
-  ];
+  final results = <ReceiptLine>[];
 
   Future<void> _chooseTemplate() async {
     final template = await showModalBottomSheet<List<(String, String, String)>>(
@@ -1175,7 +1184,7 @@ class _ScanScreenState extends State<ScanScreen>
     setState(() {
       results
         ..clear()
-        ..addAll(template);
+        ..addAll(template.map(_lineFromLegacy));
       selected
         ..clear()
         ..addAll(List.generate(results.length, (index) => index));
@@ -1193,7 +1202,7 @@ class _ScanScreenState extends State<ScanScreen>
     setState(() {
       results
         ..clear()
-        ..addAll(items);
+        ..addAll(items.map(_lineFromLegacy));
       selected
         ..clear()
         ..addAll(List.generate(results.length, (index) => index));
@@ -1201,54 +1210,51 @@ class _ScanScreenState extends State<ScanScreen>
     });
   }
 
-  void _voiceComingSoon() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Đang mở nhập nhanh để bạn kiểm tra dữ liệu'),
-      ),
-    );
-    unawaited(_manualEntry());
-  }
-
   Future<void> _pickReceipt(ImageSource source) async {
     try {
       final image = await imagePicker.pickImage(
         source: source,
-        imageQuality: 82,
-        maxWidth: 1600,
+        imageQuality: 95,
+        maxWidth: 3000,
       );
       if (image == null) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Chưa chọn ảnh, dùng hóa đơn mẫu')),
-        );
-        _startScan();
         return;
       }
       if (!mounted) return;
       setState(() => receiptImage = image);
-      _startScan();
-    } catch (_) {
+      await _startScan();
+    } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Không mở được camera, đang dùng hóa đơn mẫu'),
+          content: Text('Không đọc được ảnh hóa đơn. Hãy thử ảnh rõ hơn.'),
         ),
       );
-      _startScan();
+      setState(() {
+        stage = 0;
+        scanError = error.toString();
+      });
     }
   }
 
   void _addSelectedToFridge() {
+    if (importing) return;
+    setState(() => importing = true);
     final foods = selected.map((index) {
       final item = results[index];
-      final detailParts = item.$2.split('·');
-      final quantity = detailParts.first.trim();
-      final price = item.$3 == 'Chưa nhập giá' ? '0đ' : item.$3;
+      final days = item.estimatedExpiryDate?.difference(DateTime.now()).inDays;
+      final status = days == null
+          ? 'Tươi ngon'
+          : days < 0
+          ? 'Hết hạn'
+          : days <= 3
+          ? 'Còn ${days < 1 ? 1 : days} ngày'
+          : 'Tươi ngon';
       return (
-        item.$1,
-        '$quantity · $price',
-        'Tươi ngon',
+        item.normalizedName,
+        '${_decimal(item.quantity)} ${item.unit} · ${_formatVnd(item.totalPriceVnd)}',
+        status,
         inventoryFoods.length % 10,
       );
     });
@@ -1258,6 +1264,38 @@ class _ScanScreenState extends State<ScanScreen>
         content: Text('Đã thêm ${selected.length} thực phẩm vào tủ lạnh'),
       ),
     );
+    setState(() {
+      importing = false;
+      stage = 0;
+      receiptImage = null;
+    });
+  }
+
+  ReceiptLine _lineFromLegacy((String, String, String) item) {
+    final detail = item.$2.split('·').first.trim().split(' ');
+    return ReceiptLine(
+      rawName: item.$1,
+      normalizedName: item.$1,
+      quantity: double.tryParse(detail.first) ?? 1,
+      unit: detail.length > 1 ? detail[1] : 'phần',
+      totalPriceVnd:
+          int.tryParse(item.$3.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0,
+      estimatedExpiryDate: DateTime.now().add(const Duration(days: 7)),
+    );
+  }
+
+  String _decimal(double value) => value == value.roundToDouble()
+      ? value.toInt().toString()
+      : value.toStringAsFixed(2);
+  String _formatVnd(int value) =>
+      '${value.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => '.')}đ';
+
+  Future<void> _editResult(int index) async {
+    final edited = await showDialog<ReceiptLine>(
+      context: context,
+      builder: (_) => _EditReceiptLineDialog(line: results[index]),
+    );
+    if (edited != null && mounted) setState(() => results[index] = edited);
   }
 
   @override
@@ -1276,30 +1314,47 @@ class _ScanScreenState extends State<ScanScreen>
     super.dispose();
   }
 
-  void _startScan() {
+  Future<void> _startScan() async {
     _cancelScanTimers();
     setState(() {
       stage = 1;
       scanStep = 0;
     });
     rotation.repeat();
-    timers.add(
-      Timer(const Duration(milliseconds: 750), () {
-        if (mounted) setState(() => scanStep = 1);
-      }),
-    );
-    timers.add(
-      Timer(const Duration(milliseconds: 1500), () {
-        if (mounted) setState(() => scanStep = 2);
-      }),
-    );
-    timers.add(
-      Timer(const Duration(milliseconds: 2400), () {
-        if (!mounted) return;
-        rotation.stop();
-        setState(() => stage = 2);
-      }),
-    );
+    try {
+      final image = receiptImage;
+      if (image == null) throw StateError('Chưa có ảnh hóa đơn');
+      if (mounted) setState(() => scanStep = 1);
+      final scan = await ocrService.scan(image.path);
+      if (!mounted) return;
+      setState(() => scanStep = 2);
+      if (scan.items.isEmpty) {
+        throw const FormatException('Không tìm thấy dòng sản phẩm và giá tiền');
+      }
+      results
+        ..clear()
+        ..addAll(scan.items);
+      selected
+        ..clear()
+        ..addAll(List.generate(results.length, (index) => index));
+      rotation.stop();
+      setState(() {
+        stage = 2;
+        scanError = null;
+      });
+    } catch (error) {
+      rotation.stop();
+      if (!mounted) return;
+      setState(() {
+        stage = 0;
+        scanError = error.toString();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('OCR chưa đọc được hóa đơn. Hãy chụp gần và rõ hơn.'),
+        ),
+      );
+    }
   }
 
   void _cancelScanTimers() {
@@ -1331,9 +1386,9 @@ class _ScanScreenState extends State<ScanScreen>
           padding: const EdgeInsets.all(16),
           children: [
             _InputMethodCard(
+              onScan: () => _pickReceipt(ImageSource.gallery),
               onTemplate: _chooseTemplate,
               onManual: _manualEntry,
-              onVoice: _voiceComingSoon,
             ),
             const SizedBox(height: 14),
             if (stage == 0) ...[
@@ -1390,18 +1445,7 @@ class _ScanScreenState extends State<ScanScreen>
                       child: Column(
                         children: [
                           IconButton.filled(
-                            tooltip: 'Bật/tắt đèn flash',
-                            onPressed: () => setState(() => flashOn = !flashOn),
-                            icon: const Icon(Icons.flash_on),
-                            style: IconButton.styleFrom(
-                              backgroundColor: flashOn
-                                  ? _green
-                                  : Colors.white24,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          IconButton.filled(
-                            tooltip: 'Dùng ảnh hóa đơn mẫu',
+                            tooltip: 'Chọn ảnh hóa đơn từ thư viện',
                             onPressed: () => _pickReceipt(ImageSource.gallery),
                             icon: const Icon(Icons.image_outlined),
                             style: IconButton.styleFrom(
@@ -1426,7 +1470,7 @@ class _ScanScreenState extends State<ScanScreen>
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     IconButton.filledTonal(
-                      tooltip: 'Chọn ảnh hóa đơn mẫu',
+                      tooltip: 'Chọn ảnh hóa đơn từ thư viện',
                       onPressed: () => _pickReceipt(ImageSource.gallery),
                       icon: const Icon(Icons.image_outlined),
                     ),
@@ -1483,6 +1527,15 @@ class _ScanScreenState extends State<ScanScreen>
                 ),
                 onReset: _reset,
                 onConfirm: _addSelectedToFridge,
+                onEdit: _editResult,
+              ),
+            if (scanError != null && stage == 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Text(
+                  'Lỗi OCR: $scanError',
+                  style: const TextStyle(color: Colors.redAccent, fontSize: 11),
+                ),
               ),
             const SizedBox(height: 18),
             Card(
@@ -1561,12 +1614,12 @@ class _ScanScreenState extends State<ScanScreen>
 
 class _InputMethodCard extends StatelessWidget {
   const _InputMethodCard({
+    required this.onScan,
     required this.onTemplate,
     required this.onManual,
-    required this.onVoice,
   });
 
-  final VoidCallback onTemplate, onManual, onVoice;
+  final VoidCallback onScan, onTemplate, onManual;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -1584,7 +1637,7 @@ class _InputMethodCard extends StatelessWidget {
                 label: 'Quét hóa đơn',
                 note: 'Chụp hoặc tải ảnh',
                 active: true,
-                onTap: () {},
+                onTap: onScan,
               ),
               const SizedBox(width: 8),
               _InputMethod(
@@ -1604,9 +1657,9 @@ class _InputMethodCard extends StatelessWidget {
               _InputMethod(
                 icon: Icons.mic_none,
                 label: 'Giọng nói',
-                note: 'Sắp ra mắt',
+                note: 'Chưa hỗ trợ',
                 disabled: true,
-                onTap: onVoice,
+                onTap: () {},
               ),
             ],
           ),
@@ -1634,7 +1687,7 @@ class _InputMethod extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Expanded(
     child: InkWell(
-      onTap: onTap,
+      onTap: disabled ? null : onTap,
       borderRadius: BorderRadius.circular(11),
       child: Container(
         height: 92,
@@ -2058,20 +2111,19 @@ class _ScanResults extends StatelessWidget {
     required this.onToggleAll,
     required this.onReset,
     required this.onConfirm,
+    required this.onEdit,
   });
-  final List<(String, String, String)> items;
+  final List<ReceiptLine> items;
   final Set<int> selected;
   final ValueChanged<int> onToggle;
   final VoidCallback onToggleAll, onReset, onConfirm;
-
-  int _priceOf(String value) =>
-      int.tryParse(value.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+  final ValueChanged<int> onEdit;
 
   @override
   Widget build(BuildContext context) {
     final total = selected.fold<int>(
       0,
-      (sum, index) => sum + _priceOf(items[index].$3),
+      (sum, index) => sum + items[index].totalPriceVnd,
     );
     final formattedTotal = total.toString().replaceAllMapped(
       RegExp(r'\B(?=(\d{3})+(?!\d))'),
@@ -2155,7 +2207,7 @@ class _ScanResults extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            entry.value.$1,
+                            entry.value.normalizedName,
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w800,
@@ -2163,19 +2215,28 @@ class _ScanResults extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            entry.value.$2,
+                            '${entry.value.quantity == entry.value.quantity.roundToDouble() ? entry.value.quantity.toInt() : entry.value.quantity} ${entry.value.unit} · HSD ${entry.value.estimatedExpiryDate == null ? 'chưa rõ' : _shortDate(entry.value.estimatedExpiryDate!)} · ${(entry.value.confidence * 100).round()}%',
                             style: const TextStyle(fontSize: 11, color: _muted),
                           ),
                         ],
                       ),
                     ),
-                    Text(
-                      entry.value.$3,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF475467),
-                      ),
+                    Column(
+                      children: [
+                        Text(
+                          '${entry.value.totalPriceVnd.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => '.')}đ',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF475467),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Sửa kết quả OCR',
+                          onPressed: () => onEdit(entry.key),
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -2222,6 +2283,131 @@ class _ScanResults extends StatelessWidget {
       ),
     );
   }
+}
+
+class _EditReceiptLineDialog extends StatefulWidget {
+  const _EditReceiptLineDialog({required this.line});
+  final ReceiptLine line;
+
+  @override
+  State<_EditReceiptLineDialog> createState() => _EditReceiptLineDialogState();
+}
+
+class _EditReceiptLineDialogState extends State<_EditReceiptLineDialog> {
+  late final name = TextEditingController(text: widget.line.normalizedName);
+  late final quantity = TextEditingController(
+    text: widget.line.quantity.toString(),
+  );
+  late final unit = TextEditingController(text: widget.line.unit);
+  late final price = TextEditingController(
+    text: widget.line.totalPriceVnd.toString(),
+  );
+  late DateTime? expiry = widget.line.estimatedExpiryDate;
+
+  @override
+  void dispose() {
+    name.dispose();
+    quantity.dispose();
+    unit.dispose();
+    price.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Sửa kết quả OCR'),
+    content: SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: name,
+            decoration: const InputDecoration(labelText: 'Tên sản phẩm'),
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: quantity,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(labelText: 'Số lượng'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  controller: unit,
+                  decoration: const InputDecoration(labelText: 'Đơn vị'),
+                ),
+              ),
+            ],
+          ),
+          TextField(
+            controller: price,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Thành tiền'),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Hạn dùng'),
+            subtitle: Text(
+              expiry == null ? 'Chưa xác định' : _shortDate(expiry!),
+            ),
+            trailing: const Icon(Icons.calendar_month),
+            onTap: () async {
+              final value = await showDatePicker(
+                context: context,
+                initialDate:
+                    expiry ?? DateTime.now().add(const Duration(days: 7)),
+                firstDate: DateTime.now().subtract(const Duration(days: 30)),
+                lastDate: DateTime.now().add(const Duration(days: 730)),
+              );
+              if (value != null) setState(() => expiry = value);
+            },
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Hủy'),
+      ),
+      FilledButton(
+        onPressed: () {
+          final parsedQuantity = double.tryParse(
+            quantity.text.replaceAll(',', '.'),
+          );
+          final parsedPrice = int.tryParse(
+            price.text.replaceAll(RegExp(r'[^0-9]'), ''),
+          );
+          if (name.text.trim().isEmpty ||
+              parsedQuantity == null ||
+              parsedQuantity <= 0 ||
+              parsedPrice == null) {
+            return;
+          }
+          Navigator.pop(
+            context,
+            ReceiptLine(
+              rawName: widget.line.rawName,
+              normalizedName: name.text.trim(),
+              quantity: parsedQuantity,
+              unit: unit.text.trim().isEmpty ? 'phần' : unit.text.trim(),
+              unitPriceVnd: (parsedPrice / parsedQuantity).round(),
+              totalPriceVnd: parsedPrice,
+              estimatedExpiryDate: expiry,
+              confidence: 1,
+              selected: widget.line.selected,
+            ),
+          );
+        },
+        child: const Text('Lưu'),
+      ),
+    ],
+  );
 }
 
 class _Store extends StatelessWidget {
@@ -3090,82 +3276,89 @@ class _AddShoppingItemDialogState extends State<AddShoppingItemDialog> {
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final maxDialogHeight =
+        (MediaQuery.sizeOf(context).height - bottomInset - 48)
+            .clamp(280.0, 760.0)
+            .toDouble();
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520, maxHeight: 760),
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(22, 20, 22, 20 + bottomInset),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Thêm món cần mua',
-                      style: TextStyle(
-                        fontSize: 21,
-                        fontWeight: FontWeight.w900,
-                        color: _ink,
-                      ),
-                    ),
-                  ),
-                  IconButton.filledTonal(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                    style: IconButton.styleFrom(
-                      backgroundColor: const Color(0xFFF3F4F6),
-                      foregroundColor: const Color(0xFF667085),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              _FormLabel('Tên món'),
-              TextField(
-                controller: nameController,
-                autofocus: true,
-                onChanged: (_) {
-                  if (showNameError) setState(() => showNameError = false);
-                },
-                decoration: _inputDecoration(
-                  'VD: Thịt gà, Rau muống...',
-                  error: showNameError ? 'Vui lòng nhập tên món' : null,
-                ),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+        constraints: BoxConstraints(maxWidth: 520, maxHeight: maxDialogHeight),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(22, 20, 22, 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        _FormLabel('Số lượng'),
-                        TextField(
-                          controller: quantityController,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
+                        const Expanded(
+                          child: Text(
+                            'Thêm món cần mua',
+                            style: TextStyle(
+                              fontSize: 21,
+                              fontWeight: FontWeight.w900,
+                              color: _ink,
+                            ),
                           ),
-                          decoration: _inputDecoration('1'),
+                        ),
+                        IconButton.filledTonal(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close),
+                          style: IconButton.styleFrom(
+                            backgroundColor: const Color(0xFFF3F4F6),
+                            foregroundColor: const Color(0xFF667085),
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _FormLabel('Đơn vị'),
-                        DropdownButtonFormField<String>(
-                          initialValue: unit,
-                          decoration: _inputDecoration(''),
-                          items:
-                              const [
+                    const SizedBox(height: 16),
+                    _FormLabel('Tên món'),
+                    TextField(
+                      controller: nameController,
+                      autofocus: true,
+                      onChanged: (_) {
+                        if (showNameError) {
+                          setState(() => showNameError = false);
+                        }
+                      },
+                      decoration: _inputDecoration(
+                        'VD: Thịt gà, Rau muống...',
+                        error: showNameError ? 'Vui lòng nhập tên món' : null,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final quantityField = Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _FormLabel('Số lượng'),
+                            TextField(
+                              controller: quantityController,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: _inputDecoration('1'),
+                            ),
+                          ],
+                        );
+                        final unitField = Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _FormLabel('Đơn vị'),
+                            DropdownButtonFormField<String>(
+                              isExpanded: true,
+                              initialValue: unit,
+                              decoration: _inputDecoration(''),
+                              items:
+                                  const [
                                     'gói',
                                     'kg',
                                     'gram',
@@ -3175,74 +3368,102 @@ class _AddShoppingItemDialogState extends State<AddShoppingItemDialog> {
                                     'hộp',
                                     'miếng',
                                     'cây',
-                                  ]
-                                  .map(
-                                    (value) => DropdownMenuItem(
+                                  ].map((value) {
+                                    return DropdownMenuItem(
                                       value: value,
-                                      child: Text(value),
-                                    ),
-                                  )
-                                  .toList(),
-                          onChanged: (value) => setState(() => unit = value!),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              _FormLabel('Danh mục'),
-              DropdownButtonFormField<String>(
-                initialValue: category,
-                decoration: _inputDecoration(''),
-                items: const ['Rau củ', 'Thịt cá', 'Đồ khô', 'Khác']
-                    .map(
-                      (value) =>
-                          DropdownMenuItem(value: value, child: Text(value)),
-                    )
-                    .toList(),
-                onChanged: (value) => setState(() => category = value!),
-              ),
-              const SizedBox(height: 14),
-              _FormLabel('Độ ưu tiên'),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: ['Cần mua gấp', 'Bình thường', 'Có cũng được']
-                      .map(
-                        (value) => Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: ChoiceChip(
-                            label: Text(value),
-                            selected: priority == value,
-                            showCheckmark: false,
-                            selectedColor: _green,
-                            backgroundColor: const Color(0xFFF3F4F6),
-                            labelStyle: TextStyle(
-                              color: priority == value
-                                  ? Colors.white
-                                  : const Color(0xFF667085),
-                              fontWeight: FontWeight.w700,
+                                      child: Text(
+                                        value,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    );
+                                  }).toList(),
+                              onChanged: (value) {
+                                if (value != null) setState(() => unit = value);
+                              },
                             ),
-                            onSelected: (_) => setState(() => priority = value),
-                          ),
-                        ),
-                      )
-                      .toList(),
+                          ],
+                        );
+                        if (constraints.maxWidth < 340) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              quantityField,
+                              const SizedBox(height: 12),
+                              unitField,
+                            ],
+                          );
+                        }
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: quantityField),
+                            const SizedBox(width: 12),
+                            Expanded(child: unitField),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    _FormLabel('Danh mục'),
+                    DropdownButtonFormField<String>(
+                      initialValue: category,
+                      decoration: _inputDecoration(''),
+                      items: const ['Rau củ', 'Thịt cá', 'Đồ khô', 'Khác']
+                          .map(
+                            (value) => DropdownMenuItem(
+                              value: value,
+                              child: Text(value),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) => setState(() => category = value!),
+                    ),
+                    const SizedBox(height: 14),
+                    _FormLabel('Độ ưu tiên'),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: ['Cần mua gấp', 'Bình thường', 'Có cũng được']
+                            .map(
+                              (value) => Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: ChoiceChip(
+                                  label: Text(value),
+                                  selected: priority == value,
+                                  showCheckmark: false,
+                                  selectedColor: _green,
+                                  backgroundColor: const Color(0xFFF3F4F6),
+                                  labelStyle: TextStyle(
+                                    color: priority == value
+                                        ? Colors.white
+                                        : const Color(0xFF667085),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                  onSelected: (_) =>
+                                      setState(() => priority = value),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    _FormLabel('Ghi chú'),
+                    TextField(
+                      controller: noteController,
+                      minLines: 2,
+                      maxLines: 3,
+                      decoration: _inputDecoration(
+                        'VD: Mua loại tươi, chọn quả chín...',
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 14),
-              _FormLabel('Ghi chú'),
-              TextField(
-                controller: noteController,
-                minLines: 2,
-                maxLines: 3,
-                decoration: _inputDecoration(
-                  'VD: Mua loại tươi, chọn quả chín...',
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 8, 22, 20),
+              child: Row(
                 children: [
                   Expanded(
                     child: OutlinedButton(
@@ -3269,8 +3490,8 @@ class _AddShoppingItemDialogState extends State<AddShoppingItemDialog> {
                   ),
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -3338,6 +3559,9 @@ class ReportsScreen extends StatelessWidget {
         final wastePercent = totalValue == 0
             ? 0
             : ((expiredValue / totalValue) * 100).round();
+        final pricedCount = inventoryFoods
+            .where((food) => priceOf(food) > 0)
+            .length;
         return Column(
           children: [
             const BrandHeader(),
@@ -3363,7 +3587,7 @@ class ReportsScreen extends StatelessWidget {
                           _green,
                         ),
                         _ReportStat(
-                          'Giá trị đã hết hạn',
+                          'Tỉ trọng giá trị hết hạn',
                           vnd(expiredValue),
                           'Cần xử lý sớm',
                           Icons.account_balance_wallet_outlined,
@@ -3371,18 +3595,18 @@ class ReportsScreen extends StatelessWidget {
                           Colors.redAccent,
                         ),
                         _ReportStat(
-                          'Tỉ lệ lãng phí tháng này',
+                          'Giá trị đã hết hạn',
                           '$wastePercent%',
-                          '${vnd(expiredValue)} / ${vnd(totalValue)}',
+                          'Tỉ trọng trong giá trị tủ',
                           Icons.emoji_events_outlined,
                           Color(0xFFFFF8E5),
                           Colors.orange,
                         ),
-                        const _ReportStat(
-                          'Thành tựu',
-                          '6/9',
-                          'Đã mở khóa',
-                          Icons.workspace_premium_outlined,
+                        _ReportStat(
+                          'Thực phẩm có giá',
+                          '$pricedCount/${inventoryFoods.length}',
+                          'Có thông tin giá trị',
+                          Icons.sell_outlined,
                           Color(0xFFFFEFF7),
                           Colors.pinkAccent,
                         ),
@@ -3396,9 +3620,7 @@ class ReportsScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const SectionTitle(
-                            'Xu hướng lãng phí & tiết kiệm (VNĐ)',
-                          ),
+                          const SectionTitle('Xu hướng (dữ liệu minh họa)'),
                           const SizedBox(height: 18),
                           SizedBox(
                             height: 145,
@@ -3441,7 +3663,7 @@ class ReportsScreen extends StatelessWidget {
                       padding: const EdgeInsets.all(14),
                       child: Column(
                         children: const [
-                          SectionTitle('So sánh tháng đầu — tháng này'),
+                          SectionTitle('So sánh (dữ liệu minh họa)'),
                           SizedBox(height: 13),
                           Row(
                             children: [
@@ -3477,7 +3699,7 @@ class ReportsScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const SectionTitle('Lượng thực phẩm lãng phí (kg)'),
+                          const SectionTitle('Lãng phí (dữ liệu minh họa)'),
                           const SizedBox(height: 18),
                           SizedBox(
                             height: 140,
@@ -3503,7 +3725,7 @@ class ReportsScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: const [
-                          SectionTitle('Tỉ lệ giữ lại theo danh mục'),
+                          SectionTitle('Theo danh mục (dữ liệu minh họa)'),
                           SizedBox(height: 14),
                           _Retention('Rau củ', .82, Colors.green),
                           _Retention('Thịt cá', .88, Colors.redAccent),
@@ -3517,8 +3739,8 @@ class ReportsScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 15),
                   const SectionTitle(
-                    'Thành tựu đã mở khóa',
-                    trailing: '6 thành tựu',
+                    'Mục tiêu mẫu',
+                    trailing: 'Chưa theo dõi lịch sử',
                   ),
                   const SizedBox(height: 8),
                   const _Achievement(
@@ -3562,7 +3784,7 @@ class ReportsScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 9),
                         const Text(
-                          'Chia sẻ thành tích của bạn!',
+                          'Tóm tắt dữ liệu hiện tại',
                           style: TextStyle(
                             fontWeight: FontWeight.w800,
                             color: _ink,
@@ -3575,16 +3797,9 @@ class ReportsScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 12),
                         FilledButton.icon(
-                          onPressed: () =>
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Đã tạo ảnh thành tích để chia sẻ',
-                                  ),
-                                ),
-                              ),
+                          onPressed: null,
                           icon: const Icon(Icons.share, size: 17),
-                          label: const Text('Chia sẻ lên mạng xã hội'),
+                          label: const Text('Chia sẻ sắp ra mắt'),
                         ),
                       ],
                     ),
@@ -3791,7 +4006,7 @@ class _Achievement extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(Icons.check_circle, color: Color(0xFF20C997), size: 16),
+          const Icon(Icons.flag_outlined, color: Color(0xFF20C997), size: 18),
         ],
       ),
     ),

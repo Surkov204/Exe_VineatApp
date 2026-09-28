@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
+import 'app_tutorial.dart';
 import 'global_search.dart';
 import 'inventory_store.dart';
 
@@ -19,7 +19,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String name = 'Mẹ';
   String role = 'Chủ tủ';
   int diet = 0;
-  bool showCode = false;
   final notifications = <bool>[true, true, true, true];
 
   Future<void> _editProfile() async {
@@ -308,7 +307,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         ),
                         Text(
-                          'Chia sẻ mã này để thành viên tham gia',
+                          'Bản demo hiện chưa đồng bộ gia đình',
                           style: TextStyle(fontSize: 10, color: _muted),
                         ),
                       ],
@@ -324,7 +323,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       borderRadius: BorderRadius.circular(9),
                     ),
                     child: Text(
-                      showCode ? 'VN8K-2026' : '••••••••',
+                      'Chưa kết nối',
                       style: const TextStyle(
                         fontWeight: FontWeight.w900,
                         letterSpacing: 1.5,
@@ -333,24 +332,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                   IconButton.filledTonal(
-                    onPressed: () => setState(() => showCode = !showCode),
-                    icon: Icon(
-                      showCode
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
+                    tooltip: 'Vì sao chưa có mã gia đình?',
+                    onPressed: () => showDialog<void>(
+                      context: context,
+                      builder: (dialogContext) => AlertDialog(
+                        title: const Text('Đồng bộ gia đình chưa bật'),
+                        content: const Text(
+                          'Mã mời thật cần được tạo và xác thực bởi backend. Bản demo đang lưu dữ liệu trên thiết bị này, vì vậy không hiển thị mã giả.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(dialogContext),
+                            child: const Text('Đã hiểu'),
+                          ),
+                        ],
+                      ),
                     ),
-                    style: IconButton.styleFrom(
-                      backgroundColor: const Color(0xFFF3F4F6),
-                    ),
-                  ),
-                  IconButton.filledTonal(
-                    onPressed: () async {
-                      await Clipboard.setData(
-                        const ClipboardData(text: 'VN8K-2026'),
-                      );
-                      if (mounted) _message('Đã sao chép mã gia đình');
-                    },
-                    icon: const Icon(Icons.copy_outlined),
+                    icon: const Icon(Icons.info_outline),
                     style: IconButton.styleFrom(
                       backgroundColor: const Color(0xFFF3F4F6),
                     ),
@@ -359,8 +357,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 12),
               InkWell(
-                onTap: () =>
-                    _message('Tính năng quản lý thành viên đang được cập nhật'),
+                onTap: () => _message(
+                  'Quản lý thành viên sẽ hoạt động sau khi cấu hình Supabase.',
+                ),
                 child: const Text(
                   'Quản lý thành viên  ›',
                   style: TextStyle(
@@ -375,6 +374,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         const SizedBox(height: 14),
         _Panel(
+          title: 'Trợ giúp',
+          child: _LinkRow(
+            'Xem hướng dẫn từng trang',
+            () => showAppTutorial(context),
+          ),
+        ),
+        const SizedBox(height: 14),
+        _Panel(
           title: 'Về ViNeat',
           child: Column(
             children: [
@@ -382,8 +389,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _AboutRow(
                 'Cập nhật lần cuối',
                 '${DateTime.now().day.toString().padLeft(2, '0')}/'
-                '${DateTime.now().month.toString().padLeft(2, '0')}/'
-                '${DateTime.now().year}',
+                    '${DateTime.now().month.toString().padLeft(2, '0')}/'
+                    '${DateTime.now().year}',
               ),
               _LinkRow(
                 'Điều khoản sử dụng',
@@ -408,19 +415,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
         const SizedBox(height: 18),
-        OutlinedButton.icon(
-          onPressed: () => _message('Đã đăng xuất'),
-          icon: const Icon(Icons.logout),
-          label: const Text('Đăng xuất'),
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 15),
-            foregroundColor: const Color(0xFF475467),
+        const Center(
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 10),
+            child: Text(
+              'Bản demo lưu dữ liệu trên thiết bị này; chưa bật đăng nhập hoặc đồng bộ gia đình.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11, color: _muted),
+            ),
           ),
-        ),
-        TextButton(
-          onPressed: () => _message('Vui lòng xác nhận xóa tài khoản'),
-          style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
-          child: const Text('Xóa tài khoản'),
         ),
         const SizedBox(height: 30),
       ],
