@@ -11,11 +11,7 @@ const _muted = Color(0xFF98A2B3);
 class ReportsScreen extends StatelessWidget {
   const ReportsScreen({super.key});
 
-  int _price(FoodSummary food) {
-    final parts = food.$2.split('·');
-    final raw = parts.length > 1 ? parts.last : parts.first;
-    return int.tryParse(raw.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
-  }
+  int _price(FoodSummary food) => food.priceVnd;
 
   String _vnd(int value) =>
       '${value.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => '.')}đ';
@@ -35,7 +31,7 @@ class ReportsScreen extends StatelessWidget {
         (sum, food) => sum + _price(food),
       );
       final expiredValue = inventoryFoods
-          .where((food) => food.$3 == 'Hết hạn')
+          .where((food) => food.status == 'Hết hạn')
           .fold<int>(0, (sum, food) => sum + _price(food));
       final consumed = monthEvents
           .where((event) => event.type == 'consumed')

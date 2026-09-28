@@ -56,10 +56,8 @@ class _FamilySettingsState extends State<FamilySettings> {
         replaceShoppingFromRemote(
           items: snapshot.shopping.map((item) => item.item).toList(),
           checked: snapshot.shopping
-              .asMap()
-              .entries
-              .where((entry) => entry.value.checked)
-              .map((entry) => entry.key)
+              .where((entry) => entry.checked)
+              .map((entry) => entry.item.id)
               .toSet(),
         );
       }
@@ -103,10 +101,8 @@ class _FamilySettingsState extends State<FamilySettings> {
       replaceShoppingFromRemote(
         items: snapshot.shopping.map((item) => item.item).toList(),
         checked: snapshot.shopping
-            .asMap()
-            .entries
-            .where((entry) => entry.value.checked)
-            .map((entry) => entry.key)
+            .where((entry) => entry.checked)
+            .map((entry) => entry.item.id)
             .toSet(),
       );
     } catch (_) {

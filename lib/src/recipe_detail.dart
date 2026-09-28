@@ -45,17 +45,54 @@ class RecipeIngredient {
   final FoodSummary? inventoryFood;
 }
 
-class CookedIngredientUse {
-  const CookedIngredientUse(this.food, this.quantity);
-  final FoodSummary food;
-  final double quantity;
-}
-
 class RecipeStep {
   const RecipeStep(this.text, this.minutes, {this.tip});
   final String text;
   final int minutes;
   final String? tip;
+}
+
+enum RecipeDifficulty { easy, medium, hard }
+
+extension RecipeDifficultyLabel on RecipeDifficulty {
+  String get label => switch (this) {
+    RecipeDifficulty.easy => 'Dễ',
+    RecipeDifficulty.medium => 'Vừa',
+    RecipeDifficulty.hard => 'Khó',
+  };
+}
+
+enum RecipeCategory { summer, breakfast, dinner }
+
+class RecipeCatalogItem {
+  const RecipeCatalogItem({
+    required this.id,
+    required this.name,
+    required this.durationMinutes,
+    required this.difficulty,
+    required this.imageIndex,
+    required this.ingredients,
+    this.categories = const {},
+  });
+
+  final String id;
+  final String name;
+  final int durationMinutes;
+  final RecipeDifficulty difficulty;
+  final int imageIndex;
+  final List<String> ingredients;
+  final Set<RecipeCategory> categories;
+
+  String get timeLabel => '$durationMinutes phút';
+  String get difficultyLabel => difficulty.label;
+
+  RecipeDetailData toDetailData() => RecipeDetailData.fromSummary(
+    name: name,
+    time: timeLabel,
+    level: difficultyLabel,
+    image: imageIndex,
+    ingredientsText: ingredients.join(' · '),
+  );
 }
 
 class RecipeDetailData {
@@ -87,7 +124,6 @@ class RecipeDetailData {
     required String name,
     required String time,
     required String level,
-    required String match,
     required int image,
     required String ingredientsText,
   }) {
@@ -124,7 +160,7 @@ class RecipeDetailData {
     FoodSummary? findFood(String ingredient) {
       final normalized = ingredient.trim().toLowerCase();
       for (final food in inventoryFoods) {
-        final stockName = food.$1.trim().toLowerCase();
+        final stockName = food.name.trim().toLowerCase();
         if (stockName == normalized ||
             stockName.contains(normalized) ||
             normalized.contains(stockName)) {
@@ -275,12 +311,12 @@ class RecipeDetailScreen extends StatelessWidget {
   final RecipeDetailData recipe;
 
   Future<void> _recordCooked(BuildContext context) async {
-    final uses = await showDialog<List<(FoodSummary, double)>>(
+    final uses = await showDialog<List<InventoryUsage>>(
       context: context,
       builder: (_) => RecipeCookDialog(
         ingredients: recipe.ingredients
             .where((ingredient) => ingredient.inventoryFood != null)
-            .map((ingredient) => (ingredient.name, ingredient.inventoryFood!))
+            .map((ingredient) => ingredient.inventoryFood!)
             .toList(),
       ),
     );
@@ -324,9 +360,10 @@ class RecipeDetailScreen extends StatelessWidget {
       return;
     }
     for (final use in uses) {
-      final current = inventoryFoods.where((food) => food.$1 == use.$1.$1);
+      final current = inventoryFoods.where((food) => food.id == use.food.id);
       if (current.isEmpty ||
-          use.$2 > InventoryItemRecord.fromSummary(current.first).quantity) {
+          use.quantity >
+              InventoryItemRecord.fromSummary(current.first).quantity) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -338,8 +375,10 @@ class RecipeDetailScreen extends StatelessWidget {
       }
     }
     for (final use in uses) {
-      final current = inventoryFoods.firstWhere((food) => food.$1 == use.$1.$1);
-      if (!consumeFoodAmount(current, use.$2)) return;
+      final current = inventoryFoods.firstWhere(
+        (food) => food.id == use.food.id,
+      );
+      if (!consumeFoodAmount(current, use.quantity)) return;
     }
     recordRecipeCooked(recipe.name);
     if (context.mounted) {

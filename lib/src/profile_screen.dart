@@ -10,6 +10,25 @@ const _green = Color(0xFF079669);
 const _ink = Color(0xFF253043);
 const _muted = Color(0xFF98A2B3);
 
+class _ProfileEditResult {
+  const _ProfileEditResult({required this.name, required this.role});
+
+  final String name;
+  final String role;
+}
+
+class _ProfileOption {
+  const _ProfileOption({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+}
+
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -26,7 +45,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _editProfile() async {
     final nameController = TextEditingController(text: name);
     final roleController = TextEditingController(text: role);
-    final result = await showDialog<(String, String)>(
+    final result = await showDialog<_ProfileEditResult>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Chỉnh sửa hồ sơ'),
@@ -50,10 +69,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: const Text('Hủy'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, (
-              nameController.text.trim(),
-              roleController.text.trim(),
-            )),
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              _ProfileEditResult(
+                name: nameController.text.trim(),
+                role: roleController.text.trim(),
+              ),
+            ),
             child: const Text('Lưu'),
           ),
         ],
@@ -61,10 +83,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
     nameController.dispose();
     roleController.dispose();
-    if (result != null && result.$1.isNotEmpty && mounted) {
+    if (result != null && result.name.isNotEmpty && mounted) {
       setState(() {
-        name = result.$1;
-        role = result.$2.isEmpty ? role : result.$2;
+        name = result.name;
+        role = result.role.isEmpty ? role : result.role;
       });
     }
   }
@@ -174,21 +196,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(
             children:
                 const [
-                  ('Ăn thường', 'Không giới hạn thực phẩm', Icons.restaurant),
-                  ('Giảm cân', 'Ưu tiên thực phẩm ít calo', Icons.balance),
-                  ('Ăn chay', 'Chỉ thực phẩm chay', Icons.spa_outlined),
-                  (
-                    'Tăng cơ',
-                    'Ưu tiên thực phẩm giàu protein',
-                    Icons.fitness_center,
+                  _ProfileOption(
+                    title: 'Ăn thường',
+                    subtitle: 'Không giới hạn thực phẩm',
+                    icon: Icons.restaurant,
                   ),
-                  ('Khác', 'Chế độ tùy chỉnh', Icons.more_horiz),
+                  _ProfileOption(
+                    title: 'Giảm cân',
+                    subtitle: 'Ưu tiên thực phẩm ít calo',
+                    icon: Icons.balance,
+                  ),
+                  _ProfileOption(
+                    title: 'Ăn chay',
+                    subtitle: 'Chỉ thực phẩm chay',
+                    icon: Icons.spa_outlined,
+                  ),
+                  _ProfileOption(
+                    title: 'Tăng cơ',
+                    subtitle: 'Ưu tiên thực phẩm giàu protein',
+                    icon: Icons.fitness_center,
+                  ),
+                  _ProfileOption(
+                    title: 'Khác',
+                    subtitle: 'Chế độ tùy chỉnh',
+                    icon: Icons.more_horiz,
+                  ),
                 ].asMap().entries.map((entry) {
                   final item = entry.value;
                   return _DietOption(
-                    title: item.$1,
-                    subtitle: item.$2,
-                    icon: item.$3,
+                    title: item.title,
+                    subtitle: item.subtitle,
+                    icon: item.icon,
                     selected: diet == entry.key,
                     onTap: () => setState(() => diet = entry.key),
                   );
@@ -201,32 +239,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(
             children:
                 const [
-                  (
-                    'Cảnh báo thực phẩm sắp hết hạn',
-                    'Nhận thông báo khi có món sắp hết hạn trong 3 ngày tới',
-                    Icons.timer_outlined,
+                  _ProfileOption(
+                    title: 'Cảnh báo thực phẩm sắp hết hạn',
+                    subtitle:
+                        'Nhận thông báo khi có món sắp hết hạn trong 3 ngày tới',
+                    icon: Icons.timer_outlined,
                   ),
-                  (
-                    'Dọn tủ lạnh thứ 6',
-                    'Popup gợi ý món ăn mỗi tối thứ 6 hàng tuần',
-                    Icons.kitchen_outlined,
+                  _ProfileOption(
+                    title: 'Dọn tủ lạnh thứ 6',
+                    subtitle: 'Popup gợi ý món ăn mỗi tối thứ 6 hàng tuần',
+                    icon: Icons.kitchen_outlined,
                   ),
-                  (
-                    'Thành tựu mới',
-                    'Thông báo khi bạn mở khóa thành tựu mới',
-                    Icons.emoji_events_outlined,
+                  _ProfileOption(
+                    title: 'Thành tựu mới',
+                    subtitle: 'Thông báo khi bạn mở khóa thành tựu mới',
+                    icon: Icons.emoji_events_outlined,
                   ),
-                  (
-                    'Hoạt động gia đình',
-                    'Khi thành viên thêm/xóa thực phẩm hoặc cập nhật danh sách đi chợ',
-                    Icons.people_outline,
+                  _ProfileOption(
+                    title: 'Hoạt động gia đình',
+                    subtitle:
+                        'Khi thành viên thêm/xóa thực phẩm hoặc cập nhật danh sách đi chợ',
+                    icon: Icons.people_outline,
                   ),
                 ].asMap().entries.map((entry) {
                   final item = entry.value;
                   return _NotificationOption(
-                    icon: item.$3,
-                    title: item.$1,
-                    subtitle: item.$2,
+                    icon: item.icon,
+                    title: item.title,
+                    subtitle: item.subtitle,
                     value: notifications[entry.key],
                     onChanged: (value) =>
                         setState(() => notifications[entry.key] = value),

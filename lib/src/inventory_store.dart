@@ -9,20 +9,25 @@ import 'household_data_repository.dart';
 import 'inventory_models.dart';
 
 export 'inventory_models.dart'
-    show FoodSummary, ShoppingSummary, InventoryItemRecord, InventoryEvent;
+    show
+        FoodSummary,
+        ShoppingSummary,
+        InventoryItemRecord,
+        InventoryEvent,
+        InventoryUsage,
+        shoppingIdentity;
 
 class ShoppingSnapshot {
   const ShoppingSnapshot(this.items, this.checked, this.links);
   final List<ShoppingSummary> items;
-  final Set<int> checked;
+  final Set<String> checked;
   final Map<String, ShoppingInventoryLink> links;
 }
 
 /// The small local store used by the demo flow.
 ///
-/// It intentionally keeps the prototype's compact tuple at the UI boundary,
-/// but owns persistence so every screen reads the same inventory and a demo
-/// survives an app restart on Android.
+/// It owns typed local persistence so every screen reads the same inventory
+/// and shopping records, and a demo survives an app restart on Android.
 final demoInventorySeed = <FoodSummary>[
   FoodSummary.fromLegacy(
     name: 'Rau muống',
@@ -94,61 +99,91 @@ final inventoryEvents = <InventoryEvent>[];
 final shoppingInventoryLinks = <String, ShoppingInventoryLink>{};
 final shoppingItems = AppServices.configured
     ? <ShoppingSummary>[]
-    : <ShoppingSummary>[
-        (
-          'Thịt gà ta',
-          '1 kg · Mua con gà ta nguyên con, làm sẵn',
-          'Cần mua gấp',
-          'Mẹ',
-          'Thịt cá',
-        ),
-        (
-          'Dứa',
-          '1 quả · Dứa chín vàng, để nấu canh chua',
-          'Bình thường',
-          'Mẹ',
-          'Rau củ',
-        ),
-        (
-          'Bánh phở',
-          '2 gói · Bánh phở tươi loại dày',
-          'Cần mua gấp',
-          'Bố',
-          'Đồ khô',
-        ),
-        ('Tỏi', '200 gram · Tỏi Lý Sơn', 'Bình thường', 'Bố', 'Rau củ'),
-        (
-          'Sữa chua Vinamilk',
-          '1 lốc · Sữa chua có đường',
-          'Có cũng được',
-          'Con (Minh)',
-          'Khác',
-        ),
-        (
-          'Đậu phộng',
-          '200 gram · Đậu phộng rang sẵn',
-          'Có cũng được',
-          'Mẹ',
-          'Đồ khô',
-        ),
-        ('Dầu hào', '1 chai · Dầu hào Maggi', 'Bình thường', 'Bố', 'Đồ khô'),
-        (
-          'Cần tây',
-          '2 cây · Cần tây tươi, lá xanh',
-          'Bình thường',
-          'Mẹ',
-          'Rau củ',
-        ),
-        (
-          'Cá hồi phi lê',
-          '2 miếng · Cá hồi Na Uy, mua ở siêu thị',
-          'Cần mua gấp',
-          'Bố',
-          'Thịt cá',
-        ),
-      ];
-final shoppingChecked = AppServices.configured ? <int>{} : <int>{4, 6};
+    : <ShoppingSummary>[..._demoShoppingSeed()];
+final shoppingChecked = AppServices.configured
+    ? <String>{}
+    : <String>{shoppingItems[4].id, shoppingItems[6].id};
 final shoppingRevision = ValueNotifier<int>(0);
+
+List<ShoppingSummary> _demoShoppingSeed() => [
+  ShoppingSummary(
+    name: 'Thịt gà ta',
+    quantity: 1,
+    unit: 'kg',
+    note: 'Mua con gà ta nguyên con, làm sẵn',
+    priority: 'Cần mua gấp',
+    createdBy: 'Mẹ',
+    category: 'Thịt cá',
+  ),
+  ShoppingSummary(
+    name: 'Dứa',
+    quantity: 1,
+    unit: 'quả',
+    note: 'Dứa chín vàng, để nấu canh chua',
+    createdBy: 'Mẹ',
+    category: 'Rau củ',
+  ),
+  ShoppingSummary(
+    name: 'Bánh phở',
+    quantity: 2,
+    unit: 'gói',
+    note: 'Bánh phở tươi loại dày',
+    priority: 'Cần mua gấp',
+    createdBy: 'Bố',
+    category: 'Đồ khô',
+  ),
+  ShoppingSummary(
+    name: 'Tỏi',
+    quantity: 200,
+    unit: 'gram',
+    note: 'Tỏi Lý Sơn',
+    createdBy: 'Bố',
+    category: 'Rau củ',
+  ),
+  ShoppingSummary(
+    name: 'Sữa chua Vinamilk',
+    quantity: 1,
+    unit: 'lốc',
+    note: 'Sữa chua có đường',
+    priority: 'Có cũng được',
+    createdBy: 'Con (Minh)',
+    category: 'Khác',
+  ),
+  ShoppingSummary(
+    name: 'Đậu phộng',
+    quantity: 200,
+    unit: 'gram',
+    note: 'Đậu phộng rang sẵn',
+    priority: 'Có cũng được',
+    createdBy: 'Mẹ',
+    category: 'Đồ khô',
+  ),
+  ShoppingSummary(
+    name: 'Dầu hào',
+    quantity: 1,
+    unit: 'chai',
+    note: 'Dầu hào Maggi',
+    createdBy: 'Bố',
+    category: 'Đồ khô',
+  ),
+  ShoppingSummary(
+    name: 'Cần tây',
+    quantity: 2,
+    unit: 'cây',
+    note: 'Cần tây tươi, lá xanh',
+    createdBy: 'Mẹ',
+    category: 'Rau củ',
+  ),
+  ShoppingSummary(
+    name: 'Cá hồi phi lê',
+    quantity: 2,
+    unit: 'miếng',
+    note: 'Cá hồi Na Uy, mua ở siêu thị',
+    priority: 'Cần mua gấp',
+    createdBy: 'Bố',
+    category: 'Thịt cá',
+  ),
+];
 
 Future<void> _inventoryWriteQueue = Future<void>.value();
 Future<void> _shoppingWriteQueue = Future<void>.value();
@@ -213,31 +248,20 @@ Future<void> restoreInventory() async {
     final restoredImagePaths = <String, String>{};
     for (final value in decoded) {
       if (value is! Map) continue;
-      final name = value['name'];
-      final detail = value['detail'];
-      final status = value['status'];
-      final image = value['image'];
-      if (name is String &&
-          detail is String &&
-          status is String &&
-          image is num) {
-        final id = value['id'];
-        final imageId = id is String && id.isNotEmpty ? id : null;
-        final imagePath = value['imagePath'];
-        if (imagePath is String && imagePath.isNotEmpty) {
-          if (imageId != null) restoredImagePaths[imageId] = imagePath;
-        }
-        restored.add(
-          FoodSummary.fromLegacy(
-            id: imageId,
-            name: name,
-            detail: detail,
-            status: status,
-            imageIndex: image.toInt(),
-            imagePath: imagePath is String ? imagePath : null,
-          ),
-        );
+      if (value['name'] is! String) continue;
+      final isTypedRecord = value['quantity'] is num;
+      final isLegacyRecord =
+          value['detail'] is String &&
+          value['status'] is String &&
+          (value['image'] is num || value['image_index'] is num);
+      if (!isTypedRecord && !isLegacyRecord) continue;
+
+      final food = FoodSummary.fromJson(value);
+      final imagePath = food.imagePath;
+      if (imagePath != null && imagePath.isNotEmpty) {
+        restoredImagePaths[food.id] = imagePath;
       }
+      restored.add(food);
     }
     inventoryFoods
       ..clear()
@@ -268,10 +292,7 @@ Future<void> _persistInventory() {
         .map(
           (food) => {
             ...food.toJson(),
-            'detail': food.$2,
-            'status': food.$3,
-            'image': food.$4,
-            'imagePath': customFoodImagePaths[food.id] ?? food.imagePath,
+            'image_path': customFoodImagePaths[food.id] ?? food.imagePath,
           },
         )
         .toList(),
@@ -418,7 +439,7 @@ bool consumeFoodAmount(
     InventoryEvent(
       id: newLocalId(),
       type: discarded ? 'discarded' : 'consumed',
-      name: food.$1,
+      name: food.name,
       quantity: amount,
       unit: current.unit,
       valueVnd: consumedValue,
@@ -477,14 +498,14 @@ void replaceInventoryFromRemote({
 
 void replaceShoppingFromRemote({
   required List<ShoppingSummary> items,
-  required Set<int> checked,
+  required Set<String> checked,
 }) {
   shoppingItems
     ..clear()
     ..addAll(items);
   shoppingChecked
     ..clear()
-    ..addAll(checked.where((index) => index >= 0 && index < items.length));
+    ..addAll(checked.where((id) => items.any((item) => item.id == id)));
   shoppingRevision.value++;
   unawaited(persistShopping(shoppingItems, shoppingChecked, syncRemote: false));
 }
@@ -557,7 +578,8 @@ void setShoppingPurchased(ShoppingSummary item, bool purchased) {
   if (purchased) {
     if (existingLink != null) return;
     final existingFood = inventoryFoods.where(
-      (food) => food.$1.trim().toLowerCase() == item.$1.trim().toLowerCase(),
+      (food) =>
+          food.name.trim().toLowerCase() == item.name.trim().toLowerCase(),
     );
     if (existingFood.isNotEmpty) {
       shoppingInventoryLinks[key] = ShoppingInventoryLink(
@@ -565,12 +587,15 @@ void setShoppingPurchased(ShoppingSummary item, bool purchased) {
         createdByPurchase: false,
       );
     } else {
-      final quantity = item.$2.split('·').first.trim();
-      final food = FoodSummary.fromLegacy(
-        name: item.$1,
-        detail: '$quantity · 0đ',
-        status: 'Tươi ngon',
-        imageIndex: item.$5.hashCode.abs() % 20,
+      final food = FoodSummary(
+        householdId: item.householdId,
+        name: item.name,
+        quantity: item.quantity,
+        unit: item.unit,
+        priceVnd: 0,
+        expiry: null,
+        imageIndex: item.category.hashCode.abs() % 20,
+        note: item.note,
       );
       inventoryFoods.add(food);
       shoppingInventoryLinks[key] = ShoppingInventoryLink(
@@ -591,18 +616,20 @@ void setShoppingPurchased(ShoppingSummary item, bool purchased) {
 int addMissingShoppingItems(String recipeName, Iterable<String> missingNames) {
   var added = 0;
   final existing = shoppingItems
-      .map((item) => item.$1.trim().toLowerCase())
+      .map((item) => item.name.trim().toLowerCase())
       .toSet();
   for (final name in missingNames) {
     final cleanName = name.trim();
     if (cleanName.isEmpty || !existing.add(cleanName.toLowerCase())) continue;
-    shoppingItems.add((
-      cleanName,
-      '1 phần · Thiếu cho món $recipeName',
-      'Bình thường',
-      'Bạn',
-      _shoppingCategoryFor(cleanName),
-    ));
+    final item = ShoppingSummary(
+      name: cleanName,
+      quantity: 1,
+      unit: 'phần',
+      note: 'Thiếu cho món $recipeName',
+      createdBy: 'Bạn',
+      category: _shoppingCategoryFor(cleanName),
+    );
+    shoppingItems.add(item);
     added++;
   }
   if (added > 0) {
@@ -653,62 +680,10 @@ Future<void> resetDemoInventory() async {
 Future<void> resetDemoShopping() async {
   shoppingItems
     ..clear()
-    ..addAll(const [
-      (
-        'Thịt gà ta',
-        '1 kg · Mua con gà ta nguyên con, làm sẵn',
-        'Cần mua gấp',
-        'Mẹ',
-        'Thịt cá',
-      ),
-      (
-        'Dứa',
-        '1 quả · Dứa chín vàng, để nấu canh chua',
-        'Bình thường',
-        'Mẹ',
-        'Rau củ',
-      ),
-      (
-        'Bánh phở',
-        '2 gói · Bánh phở tươi loại dày',
-        'Cần mua gấp',
-        'Bố',
-        'Đồ khô',
-      ),
-      ('Tỏi', '200 gram · Tỏi Lý Sơn', 'Bình thường', 'Bố', 'Rau củ'),
-      (
-        'Sữa chua Vinamilk',
-        '1 lốc · Sữa chua có đường',
-        'Có cũng được',
-        'Con (Minh)',
-        'Khác',
-      ),
-      (
-        'Đậu phộng',
-        '200 gram · Đậu phộng rang sẵn',
-        'Có cũng được',
-        'Mẹ',
-        'Đồ khô',
-      ),
-      ('Dầu hào', '1 chai · Dầu hào Maggi', 'Bình thường', 'Bố', 'Đồ khô'),
-      (
-        'Cần tây',
-        '2 cây · Cần tây tươi, lá xanh',
-        'Bình thường',
-        'Mẹ',
-        'Rau củ',
-      ),
-      (
-        'Cá hồi phi lê',
-        '2 miếng · Cá hồi Na Uy, mua ở siêu thị',
-        'Cần mua gấp',
-        'Bố',
-        'Thịt cá',
-      ),
-    ]);
+    ..addAll(_demoShoppingSeed());
   shoppingChecked
     ..clear()
-    ..addAll(const {4, 6});
+    ..addAll({shoppingItems[4].id, shoppingItems[6].id});
   shoppingInventoryLinks.clear();
   shoppingRevision.value++;
   final remove = _shoppingWriteQueue.then((_) async {
@@ -735,28 +710,23 @@ Future<ShoppingSnapshot?> restoreShopping() async {
     if (rawItems is List) {
       for (final value in rawItems) {
         if (value is! Map) continue;
-        final fields = [
-          value['name'],
-          value['detail'],
-          value['priority'],
-          value['by'],
-          value['category'],
-        ];
-        if (fields.every((field) => field is String)) {
-          items.add((
-            fields[0] as String,
-            fields[1] as String,
-            fields[2] as String,
-            fields[3] as String,
-            fields[4] as String,
-          ));
+        if (value['name'] is String) {
+          items.add(ShoppingSummary.fromJson(value));
         }
       }
     }
-    final checked = <int>{};
+    final checked = <String>{};
     final rawChecked = decoded['checked'];
     if (rawChecked is List) {
-      checked.addAll(rawChecked.whereType<num>().map((value) => value.toInt()));
+      // Upgrade the old index-based checklist to stable item IDs once.
+      for (final value in rawChecked) {
+        if (value is String) {
+          checked.add(value);
+        } else if (value is num) {
+          final index = value.toInt();
+          if (index >= 0 && index < items.length) checked.add(items[index].id);
+        }
+      }
     }
     final links = <String, ShoppingInventoryLink>{};
     final rawLinks = decoded['links'];
@@ -779,21 +749,11 @@ Future<ShoppingSnapshot?> restoreShopping() async {
 
 Future<void> persistShopping(
   List<ShoppingSummary> items,
-  Set<int> checked, {
+  Set<String> checked, {
   bool syncRemote = true,
 }) {
   final encoded = jsonEncode({
-    'items': items
-        .map(
-          (item) => {
-            'name': item.$1,
-            'detail': item.$2,
-            'priority': item.$3,
-            'by': item.$4,
-            'category': item.$5,
-          },
-        )
-        .toList(),
+    'items': items.map((item) => item.toJson()).toList(),
     'checked': checked.toList(),
     'links': shoppingInventoryLinks.entries
         .map((entry) => entry.value.toJson(entry.key))

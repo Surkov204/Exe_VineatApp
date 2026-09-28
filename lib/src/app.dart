@@ -78,29 +78,41 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
+class _PageTip {
+  const _PageTip({required this.title, required this.description});
+
+  final String title;
+  final String description;
+}
+
 class _AppShellState extends State<AppShell>
     with SingleTickerProviderStateMixin, RouteAware {
   static const _pageKeys = ['home', 'scan', 'recipes', 'shopping', 'reports'];
-  static const _pageTips = [
-    (
-      'Mẹo tủ lạnh',
-      'Thêm thực phẩm, theo dõi hạn dùng và mở một món để sửa hoặc ghi nhận đã dùng.',
+  static const _pageTips = <_PageTip>[
+    _PageTip(
+      title: 'Mẹo tủ lạnh',
+      description:
+          'Thêm thực phẩm, theo dõi hạn dùng và mở một món để sửa hoặc ghi nhận đã dùng.',
     ),
-    (
-      'Mẹo quét hóa đơn',
-      'Chụp hoặc chọn hóa đơn, rà lại từng dòng rồi mới xác nhận nhập vào tủ.',
+    _PageTip(
+      title: 'Mẹo quét hóa đơn',
+      description:
+          'Chụp hoặc chọn hóa đơn, rà lại từng dòng rồi mới xác nhận nhập vào tủ.',
     ),
-    (
-      'Mẹo gợi ý món ăn',
-      'Tìm món theo nguyên liệu đang có; mở công thức để xem phần còn thiếu.',
+    _PageTip(
+      title: 'Mẹo gợi ý món ăn',
+      description:
+          'Tìm món theo nguyên liệu đang có; mở công thức để xem phần còn thiếu.',
     ),
-    (
-      'Mẹo đi chợ',
-      'Thêm món cần mua. Đánh dấu đã mua để chuyển món vào tủ lạnh.',
+    _PageTip(
+      title: 'Mẹo đi chợ',
+      description:
+          'Thêm món cần mua. Đánh dấu đã mua để chuyển món vào tủ lạnh.',
     ),
-    (
-      'Mẹo báo cáo',
-      'Số liệu phản ánh các lần thêm, dùng và bỏ thực phẩm đã xác nhận.',
+    _PageTip(
+      title: 'Mẹo báo cáo',
+      description:
+          'Số liệu phản ánh các lần thêm, dùng và bỏ thực phẩm đã xác nhận.',
     ),
   ];
   int _index = 0;
@@ -175,10 +187,8 @@ class _AppShellState extends State<AppShell>
           replaceShoppingFromRemote(
             items: snapshot.shopping.map((item) => item.item).toList(),
             checked: snapshot.shopping
-                .asMap()
-                .entries
-                .where((entry) => entry.value.checked)
-                .map((entry) => entry.key)
+                .where((entry) => entry.checked)
+                .map((entry) => entry.item.id)
                 .toSet(),
           );
         },
@@ -469,8 +479,8 @@ class _AppShellState extends State<AppShell>
           Positioned.fill(
             child: AnchoredTutorialCoachmark(
               targetKey: tutorialTargetKeys[_index],
-              title: _pageTips[_index].$1,
-              description: _pageTips[_index].$2,
+              title: _pageTips[_index].title,
+              description: _pageTips[_index].description,
               step: _index + 1,
               totalSteps: _pages.length,
               onNext: _advancePageTip,

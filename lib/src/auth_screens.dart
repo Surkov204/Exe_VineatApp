@@ -471,10 +471,8 @@ class _HouseholdGateState extends State<HouseholdGate> {
       replaceShoppingFromRemote(
         items: snapshot.shopping.map((item) => item.item).toList(),
         checked: snapshot.shopping
-            .asMap()
-            .entries
-            .where((entry) => entry.value.checked)
-            .map((entry) => entry.key)
+            .where((entry) => entry.checked)
+            .map((entry) => entry.item.id)
             .toSet(),
       );
     } catch (_) {
@@ -519,10 +517,8 @@ class _HouseholdGateState extends State<HouseholdGate> {
       replaceShoppingFromRemote(
         items: snapshot.shopping.map((item) => item.item).toList(),
         checked: snapshot.shopping
-            .asMap()
-            .entries
-            .where((entry) => entry.value.checked)
-            .map((entry) => entry.key)
+            .where((entry) => entry.checked)
+            .map((entry) => entry.item.id)
             .toSet(),
       );
       if (mounted) {
@@ -637,13 +633,13 @@ class _DemoImportChoice extends StatelessWidget {
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    item.$1,
+                                    item.name,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                                 Text(
-                                  item.$2,
+                                  item.detail,
                                   style: const TextStyle(
                                     fontSize: 11,
                                     color: Color(0xFF667085),

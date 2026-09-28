@@ -94,7 +94,7 @@ class HouseholdDataRepository {
     final rows = await client
         .from('inventory_items')
         .select(
-          'id,name,quantity,unit,price_vnd,expiry_date,image_index,image_path,note',
+          'id,household_id,name,quantity,unit,price_vnd,expiry_date,image_index,image_path,note',
         )
         .eq('household_id', householdId)
         .order('expiry_date');
@@ -113,7 +113,9 @@ class HouseholdDataRepository {
           viewPath = null;
         }
       }
-      allInventory.add(_recordFromRow(row, imagePath: viewPath));
+      allInventory.add(
+        _recordFromRow(row, householdId: householdId, imagePath: viewPath),
+      );
     }
     final inventory = allInventory.where((item) => item.quantity > 0).toList();
 
@@ -363,7 +365,7 @@ class HouseholdDataRepository {
     final shoppingRows = await AppServices.client
         .from('shopping_items')
         .select(
-          'id,name,quantity,unit,category,priority,note,checked_at,inventory_item_id',
+          'id,household_id,name,quantity,unit,category,priority,note,checked_at,inventory_item_id',
         )
         .eq('household_id', householdId)
         .order('created_at');
@@ -395,12 +397,18 @@ class HouseholdDataRepository {
 
   InventoryItemRecord _recordFromRow(
     Map<String, dynamic> row, {
+    required String householdId,
     String? imagePath,
   }) {
+    final rowHouseholdId = row['household_id'] as String?;
+    if (rowHouseholdId != householdId) {
+      throw StateError('Inventory row belongs to another household.');
+    }
     final quantity = (row['quantity'] as num?)?.toDouble() ?? 1;
     final expiryText = row['expiry_date'] as String?;
     return InventoryItemRecord(
       id: row['id'] as String,
+      householdId: rowHouseholdId,
       name: row['name'] as String? ?? 'Thực phẩm',
       quantity: quantity,
       unit: row['unit'] as String? ?? 'phần',
@@ -413,22 +421,21 @@ class HouseholdDataRepository {
   }
 
   ShoppingSummary _shoppingFromRow(Map<String, dynamic> row) {
-    final quantity = (row['quantity'] as num?)?.toDouble() ?? 1;
-    final unit = row['unit'] as String? ?? 'phần';
-    final note = row['note'] as String?;
-    final detail =
-        '${_formatQuantity(quantity)} $unit${note == null || note.isEmpty ? '' : ' · $note'}';
     final priority = switch (row['priority']) {
       'urgent' => 'Cần mua gấp',
       'optional' => 'Có cũng được',
       _ => 'Bình thường',
     };
-    return (
-      row['name'] as String? ?? 'Thực phẩm',
-      detail,
-      priority,
-      'Gia đình',
-      _categoryLabel(row['category'] as String? ?? 'other'),
+    return ShoppingSummary(
+      id: row['id'] as String?,
+      householdId: row['household_id'] as String? ?? _householdId,
+      name: row['name'] as String? ?? 'Thực phẩm',
+      quantity: (row['quantity'] as num?)?.toDouble() ?? 1,
+      unit: row['unit'] as String? ?? 'phần',
+      note: row['note'] as String? ?? '',
+      priority: priority,
+      createdBy: 'Gia đình',
+      category: _categoryLabel(row['category'] as String? ?? 'other'),
     );
   }
 
@@ -445,6 +452,7 @@ class HouseholdDataRepository {
     final record = InventoryItemRecord.fromSummary(
       food,
       id: id,
+      householdId: householdId,
       imagePath: localImagePath,
     );
     final remoteImagePath = await _resolveImagePath(
@@ -566,7 +574,7 @@ class HouseholdDataRepository {
 
   Future<void> saveShopping(
     List<ShoppingSummary> items,
-    Set<int> checked,
+    Set<String> checked,
   ) async {
     final scope = _currentScope;
     await _ensureScope(scope);
@@ -576,17 +584,18 @@ class HouseholdDataRepository {
     for (final entry in items.asMap().entries) {
       _assertScope(scope);
       final item = entry.value;
+      if (item.householdId != null && item.householdId != householdId) {
+        throw StateError('Shopping item belongs to another household.');
+      }
       final identity = shoppingIdentity(item);
-      final id = _shoppingIds.putIfAbsent(identity, newLocalId);
+      final id = _shoppingIds.putIfAbsent(identity, () => item.id);
       final existingInventoryId = _shoppingInventoryLinks[id];
-      final detail = item.$2.split('·').map((part) => part.trim()).toList();
-      final amount = _parseQuantity(detail.first);
       final fingerprint = _shoppingFingerprint(
         item,
-        checked: checked.contains(entry.key),
+        checked: checked.contains(item.id),
       );
       if (_shoppingFingerprints[id] == fingerprint) {
-        if (checked.contains(entry.key) && existingInventoryId == null) {
+        if (checked.contains(item.id) && existingInventoryId == null) {
           final result = await AppServices.client.rpc(
             'complete_shopping_item',
             params: {'p_shopping_item_id': id},
@@ -602,13 +611,13 @@ class HouseholdDataRepository {
       final row = <String, Object?>{
         'id': id,
         'household_id': householdId,
-        'name': item.$1,
-        'quantity': amount.$1,
-        'unit': amount.$2,
-        'category': _categoryCode(item.$5),
-        'priority': _priorityCode(item.$3),
-        'note': detail.length > 1 ? detail.sublist(1).join(' · ') : null,
-        'checked_at': checked.contains(entry.key)
+        'name': item.name,
+        'quantity': item.quantity,
+        'unit': item.unit,
+        'category': _categoryCode(item.category),
+        'priority': _priorityCode(item.priority),
+        'note': item.note.isEmpty ? null : item.note,
+        'checked_at': checked.contains(item.id)
             ? DateTime.now().toUtc().toIso8601String()
             : null,
         'inventory_item_id': existingInventoryId,
@@ -616,13 +625,13 @@ class HouseholdDataRepository {
       };
       await AppServices.client.from('shopping_items').upsert(row);
       _assertScope(scope);
-      if (checked.contains(entry.key)) {
+      if (checked.contains(item.id)) {
         final result = await AppServices.client.rpc(
           'complete_shopping_item',
           params: {'p_shopping_item_id': id},
         );
         _assertScope(scope);
-        if (checked.contains(entry.key) &&
+        if (checked.contains(item.id) &&
             (result is! String || result.isEmpty)) {
           throw StateError('Máy chủ chưa xác nhận món đã mua.');
         }
@@ -641,8 +650,10 @@ class HouseholdDataRepository {
     await _ensureScope(scope);
     final householdId = _householdId;
     if (householdId == null) return;
-    final id = _shoppingIds[shoppingIdentity(item)];
-    if (id == null) return;
+    if (item.householdId != null && item.householdId != householdId) {
+      throw StateError('Shopping item belongs to another household.');
+    }
+    final id = item.id;
     await AppServices.client
         .from('shopping_items')
         .delete()
@@ -657,7 +668,7 @@ class HouseholdDataRepository {
 
   Future<void> recordRecipeCooked(
     String recipeName,
-    List<(FoodSummary, double)> uses,
+    List<InventoryUsage> uses,
   ) async {
     final scope = _currentScope;
     await _ensureScope(scope);
@@ -666,8 +677,8 @@ class HouseholdDataRepository {
     final items = uses
         .map(
           (use) => {
-            'inventory_item_id': _ensureFoodId(use.$1),
-            'quantity': use.$2,
+            'inventory_item_id': _ensureFoodId(use.food),
+            'quantity': use.quantity,
           },
         )
         .toList();
@@ -788,7 +799,16 @@ class HouseholdDataRepository {
 }
 
 String _shoppingFingerprint(ShoppingSummary item, {required bool checked}) =>
-    jsonEncode([item.$1, item.$2, item.$3, item.$4, item.$5, checked]);
+    jsonEncode([
+      item.name,
+      item.quantity,
+      item.unit,
+      item.note,
+      item.priority,
+      item.createdBy,
+      item.category,
+      checked,
+    ]);
 
 String _eventType(String type) => switch (type) {
   'consumed' => 'consumed',
@@ -797,22 +817,6 @@ String _eventType(String type) => switch (type) {
   'restored' => 'restored',
   _ => 'updated',
 };
-
-(double, String) _parseQuantity(String value) {
-  final match = RegExp(r'^\s*(\d+(?:[.,]\d+)?)\s*(.*)$').firstMatch(value);
-  if (match == null) return (1, 'phần');
-  return (
-    double.tryParse(match.group(1)!.replaceAll(',', '.')) ?? 1,
-    match.group(2)!.trim().isEmpty ? 'phần' : match.group(2)!.trim(),
-  );
-}
-
-String _formatQuantity(double value) => value == value.roundToDouble()
-    ? value.toInt().toString()
-    : value
-          .toString()
-          .replaceFirst(RegExp(r'0+$'), '')
-          .replaceFirst(RegExp(r'\.$'), '');
 
 String _priorityCode(String priority) => switch (priority) {
   'Cần mua gấp' => 'urgent',

@@ -175,7 +175,7 @@ class _FridgeScreenState extends State<FridgeScreen> {
     addFoodsToInventory([food]);
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text('Đã thêm ${food.$1} vào tủ lạnh')));
+    ).showSnackBar(SnackBar(content: Text('Đã thêm ${food.name} vào tủ lạnh')));
   }
 
   @override
@@ -195,17 +195,13 @@ class _FridgeScreenState extends State<FridgeScreen> {
       valueListenable: inventoryRevision,
       builder: (_, _, _) {
         final expiredCount = inventoryFoods
-            .where((food) => food.$3 == 'Hết hạn')
+            .where((food) => food.status == 'Hết hạn')
             .length;
         final warningCount = inventoryFoods
-            .where((food) => food.$3.contains('Còn'))
+            .where((food) => food.status.contains('Còn'))
             .length;
         final freshCount = inventoryFoods.length - expiredCount - warningCount;
-        int priceOf(FoodSummary food) {
-          final parts = food.$2.split('·');
-          final raw = parts.length > 1 ? parts.last : parts.first;
-          return int.tryParse(raw.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
-        }
+        int priceOf(FoodSummary food) => food.priceVnd;
 
         String vnd(int value) =>
             '${value.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => '.')}đ';
@@ -214,11 +210,13 @@ class _FridgeScreenState extends State<FridgeScreen> {
           (sum, food) => sum + priceOf(food),
         );
         final expiredValue = inventoryFoods
-            .where((food) => food.$3 == 'Hết hạn')
+            .where((food) => food.status == 'Hết hạn')
             .fold<int>(0, (sum, food) => sum + priceOf(food));
         final wasteRatio = totalValue == 0 ? 0.0 : expiredValue / totalValue;
         final displayedFoods = _showOnlyAttention
-            ? inventoryFoods.where((food) => food.$3 != 'Tươi ngon').toList()
+            ? inventoryFoods
+                  .where((food) => food.status != 'Tươi ngon')
+                  .toList()
             : inventoryFoods;
         return Stack(
           children: [
@@ -333,12 +331,12 @@ class _FridgeScreenState extends State<FridgeScreen> {
                                 spacing: 7,
                                 runSpacing: 7,
                                 children: inventoryFoods
-                                    .where((food) => food.$3 != 'Tươi ngon')
+                                    .where((food) => food.status != 'Tươi ngon')
                                     .take(5)
                                     .map(
                                       (food) => _AlertChip(
-                                        food.$1,
-                                        food.$3 == 'Hết hạn',
+                                        food.name,
+                                        food.status == 'Hết hạn',
                                       ),
                                     )
                                     .toList(),
@@ -379,10 +377,10 @@ class _FridgeScreenState extends State<FridgeScreen> {
                       ...displayedFoods.map(
                         (f) => _FoodTile(
                           summary: f,
-                          name: f.$1,
-                          detail: f.$2,
-                          status: f.$3,
-                          image: f.$4,
+                          name: f.name,
+                          detail: f.detail,
+                          status: f.status,
+                          image: f.imageIndex,
                           onDeleted: () {
                             removeFoodFromInventory(f);
                           },
@@ -1179,7 +1177,6 @@ class _MealSuggestion extends StatelessWidget {
             name: name,
             time: time,
             level: 'Vừa',
-            match: '75% có sẵn',
             image: name.contains('Canh')
                 ? 11
                 : name.contains('Bò')
@@ -1251,7 +1248,7 @@ class _ScanScreenState extends State<ScanScreen>
   final results = <ReceiptLine>[];
 
   Future<void> _chooseTemplate() async {
-    final template = await showModalBottomSheet<List<(String, String, String)>>(
+    final template = await showModalBottomSheet<List<ReceiptLine>>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -1263,7 +1260,7 @@ class _ScanScreenState extends State<ScanScreen>
       inputOrigin = _ScanInputOrigin.sampleTemplate;
       results
         ..clear()
-        ..addAll(template.map(_lineFromLegacy));
+        ..addAll(template);
       selected
         ..clear()
         ..addAll(List.generate(results.length, (index) => index));
@@ -1272,7 +1269,7 @@ class _ScanScreenState extends State<ScanScreen>
   }
 
   Future<void> _manualEntry() async {
-    final items = await showDialog<List<(String, String, String)>>(
+    final items = await showDialog<List<ReceiptLine>>(
       context: context,
       barrierColor: Colors.black45,
       builder: (_) => const _ManualFoodDialog(),
@@ -1283,7 +1280,7 @@ class _ScanScreenState extends State<ScanScreen>
       inputOrigin = _ScanInputOrigin.manualEntry;
       results
         ..clear()
-        ..addAll(items.map(_lineFromLegacy));
+        ..addAll(items);
       selected
         ..clear()
         ..addAll(List.generate(results.length, (index) => index));
@@ -1389,19 +1386,6 @@ class _ScanScreenState extends State<ScanScreen>
       receiptImage = null;
       scanResult = null;
     });
-  }
-
-  ReceiptLine _lineFromLegacy((String, String, String) item) {
-    final detail = item.$2.split('·').first.trim().split(' ');
-    return ReceiptLine(
-      rawName: item.$1,
-      normalizedName: item.$1,
-      quantity: double.tryParse(detail.first) ?? 1,
-      unit: detail.length > 1 ? detail[1] : 'phần',
-      totalPriceVnd:
-          int.tryParse(item.$3.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0,
-      estimatedExpiryDate: DateTime.now().add(const Duration(days: 7)),
-    );
   }
 
   String _decimal(double value) => value == value.roundToDouble()
@@ -1830,14 +1814,17 @@ class _InputMethod extends StatelessWidget {
         children: [
           Icon(icon, size: 23, color: _green),
           const SizedBox(height: 5),
-          Text(
-            label,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              color: _ink,
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: _ink,
+              ),
             ),
           ),
           const SizedBox(height: 2),
@@ -1853,93 +1840,271 @@ class _InputMethod extends StatelessWidget {
   );
 }
 
+class _FoodTemplateItem {
+  const _FoodTemplateItem({
+    required this.name,
+    required this.quantity,
+    required this.unit,
+    required this.totalPriceVnd,
+    required this.shelfLifeDays,
+  });
+
+  final String name;
+  final double quantity;
+  final String unit;
+  final int totalPriceVnd;
+  final int shelfLifeDays;
+
+  ReceiptLine toReceiptLine({DateTime? referenceTime}) {
+    final now = referenceTime ?? DateTime.now();
+    return ReceiptLine(
+      rawName: name,
+      normalizedName: name,
+      quantity: quantity,
+      unit: unit,
+      unitPriceVnd: quantity <= 0 ? 0 : (totalPriceVnd / quantity).round(),
+      totalPriceVnd: totalPriceVnd,
+      estimatedExpiryDate: now.add(Duration(days: shelfLifeDays)),
+      confidence: 1,
+    );
+  }
+}
+
+class _FoodTemplate {
+  const _FoodTemplate({
+    required this.title,
+    required this.description,
+    required this.icon,
+    required this.items,
+  });
+
+  final String title;
+  final String description;
+  final IconData icon;
+  final List<_FoodTemplateItem> items;
+
+  List<ReceiptLine> buildLines() =>
+      items.map((item) => item.toReceiptLine()).toList();
+}
+
 class _FoodTemplateSheet extends StatelessWidget {
   const _FoodTemplateSheet();
 
-  static const templates = [
-    (
-      'Đi chợ hàng tuần',
-      '8 món thiết yếu cho cả nhà',
-      Icons.shopping_basket_outlined,
-      [
-        ('Thịt heo', '500g · HSD dự kiến: 7 ngày', '65.000đ'),
-        ('Trứng gà', '10 quả · HSD dự kiến: 21 ngày', '35.000đ'),
-        ('Rau muống', '2 bó · HSD dự kiến: 3 ngày', '15.000đ'),
-        ('Cà chua', '5 quả · HSD dự kiến: 7 ngày', '25.000đ'),
-        ('Cải thảo', '1 cây · HSD dự kiến: 7 ngày', '20.000đ'),
-        ('Sữa tươi', '2 hộp · HSD dự kiến: 10 ngày', '32.000đ'),
-        ('Đậu hũ', '4 miếng · HSD dự kiến: 3 ngày', '10.000đ'),
-        ('Hành lá', '2 bó · HSD dự kiến: 3 ngày', '15.000đ'),
+  static final templates = <_FoodTemplate>[
+    _FoodTemplate(
+      title: 'Đi chợ hàng tuần',
+      description: '8 món thiết yếu cho cả nhà',
+      icon: Icons.shopping_basket_outlined,
+      items: [
+        _FoodTemplateItem(
+          name: 'Thịt heo',
+          quantity: 500,
+          unit: 'gram',
+          totalPriceVnd: 65000,
+          shelfLifeDays: 7,
+        ),
+        _FoodTemplateItem(
+          name: 'Trứng gà',
+          quantity: 10,
+          unit: 'quả',
+          totalPriceVnd: 35000,
+          shelfLifeDays: 21,
+        ),
+        _FoodTemplateItem(
+          name: 'Rau muống',
+          quantity: 2,
+          unit: 'bó',
+          totalPriceVnd: 15000,
+          shelfLifeDays: 3,
+        ),
+        _FoodTemplateItem(
+          name: 'Cà chua',
+          quantity: 5,
+          unit: 'quả',
+          totalPriceVnd: 25000,
+          shelfLifeDays: 7,
+        ),
+        _FoodTemplateItem(
+          name: 'Cải thảo',
+          quantity: 1,
+          unit: 'cây',
+          totalPriceVnd: 20000,
+          shelfLifeDays: 7,
+        ),
+        _FoodTemplateItem(
+          name: 'Sữa tươi',
+          quantity: 2,
+          unit: 'hộp',
+          totalPriceVnd: 32000,
+          shelfLifeDays: 10,
+        ),
+        _FoodTemplateItem(
+          name: 'Đậu hũ',
+          quantity: 4,
+          unit: 'miếng',
+          totalPriceVnd: 10000,
+          shelfLifeDays: 3,
+        ),
+        _FoodTemplateItem(
+          name: 'Hành lá',
+          quantity: 2,
+          unit: 'bó',
+          totalPriceVnd: 15000,
+          shelfLifeDays: 3,
+        ),
       ],
     ),
-    (
-      'Bữa sáng nhanh',
-      '5 món cho bữa sáng trong tuần',
-      Icons.free_breakfast_outlined,
-      [
-        ('Trứng gà', '10 quả · HSD dự kiến: 21 ngày', '35.000đ'),
-        ('Bánh mì', '5 ổ · HSD dự kiến: 3 ngày', '20.000đ'),
-        ('Sữa tươi', '5 hộp · HSD dự kiến: 10 ngày', '40.000đ'),
-        ('Chuối', '1 nải · HSD dự kiến: 5 ngày', '25.000đ'),
-        ('Yến mạch', '500g · HSD dự kiến: 180 ngày', '55.000đ'),
+    _FoodTemplate(
+      title: 'Bữa sáng nhanh',
+      description: '5 món cho bữa sáng trong tuần',
+      icon: Icons.free_breakfast_outlined,
+      items: [
+        _FoodTemplateItem(
+          name: 'Trứng gà',
+          quantity: 10,
+          unit: 'quả',
+          totalPriceVnd: 35000,
+          shelfLifeDays: 21,
+        ),
+        _FoodTemplateItem(
+          name: 'Bánh mì',
+          quantity: 5,
+          unit: 'ổ',
+          totalPriceVnd: 20000,
+          shelfLifeDays: 3,
+        ),
+        _FoodTemplateItem(
+          name: 'Sữa tươi',
+          quantity: 5,
+          unit: 'hộp',
+          totalPriceVnd: 40000,
+          shelfLifeDays: 10,
+        ),
+        _FoodTemplateItem(
+          name: 'Chuối',
+          quantity: 1,
+          unit: 'nải',
+          totalPriceVnd: 25000,
+          shelfLifeDays: 5,
+        ),
+        _FoodTemplateItem(
+          name: 'Yến mạch',
+          quantity: 500,
+          unit: 'gram',
+          totalPriceVnd: 55000,
+          shelfLifeDays: 180,
+        ),
       ],
     ),
-    (
-      'Lẩu cuối tuần',
-      '6 nguyên liệu cho 4 người',
-      Icons.soup_kitchen_outlined,
-      [
-        ('Thịt bò', '500g · HSD dự kiến: 3 ngày', '125.000đ'),
-        ('Tôm sú', '500g · HSD dự kiến: 2 ngày', '110.000đ'),
-        ('Nấm kim châm', '3 gói · HSD dự kiến: 5 ngày', '30.000đ'),
-        ('Rau cải', '2 bó · HSD dự kiến: 3 ngày', '24.000đ'),
-        ('Đậu hũ', '4 miếng · HSD dự kiến: 3 ngày', '10.000đ'),
-        ('Mì gói', '4 gói · HSD dự kiến: 180 ngày', '20.000đ'),
+    _FoodTemplate(
+      title: 'Lẩu cuối tuần',
+      description: '6 nguyên liệu cho 4 người',
+      icon: Icons.soup_kitchen_outlined,
+      items: [
+        _FoodTemplateItem(
+          name: 'Thịt bò',
+          quantity: 500,
+          unit: 'gram',
+          totalPriceVnd: 125000,
+          shelfLifeDays: 3,
+        ),
+        _FoodTemplateItem(
+          name: 'Tôm sú',
+          quantity: 500,
+          unit: 'gram',
+          totalPriceVnd: 110000,
+          shelfLifeDays: 2,
+        ),
+        _FoodTemplateItem(
+          name: 'Nấm kim châm',
+          quantity: 3,
+          unit: 'gói',
+          totalPriceVnd: 30000,
+          shelfLifeDays: 5,
+        ),
+        _FoodTemplateItem(
+          name: 'Rau cải',
+          quantity: 2,
+          unit: 'bó',
+          totalPriceVnd: 24000,
+          shelfLifeDays: 3,
+        ),
+        _FoodTemplateItem(
+          name: 'Đậu hũ',
+          quantity: 4,
+          unit: 'miếng',
+          totalPriceVnd: 10000,
+          shelfLifeDays: 3,
+        ),
+        _FoodTemplateItem(
+          name: 'Mì gói',
+          quantity: 4,
+          unit: 'gói',
+          totalPriceVnd: 20000,
+          shelfLifeDays: 180,
+        ),
       ],
     ),
   ];
 
   @override
-  Widget build(BuildContext context) => SafeArea(
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 22),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Chọn mẫu thực phẩm',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Bạn vẫn có thể chọn lại từng món trước khi thêm vào tủ.',
-            style: TextStyle(fontSize: 12, color: _muted),
-          ),
-          const SizedBox(height: 14),
-          ...templates.map(
-            (template) => Card(
-              margin: const EdgeInsets.only(bottom: 9),
-              child: ListTile(
-                onTap: () => Navigator.pop(context, template.$4),
-                leading: CircleAvatar(
-                  backgroundColor: const Color(0xFFE7FAF3),
-                  foregroundColor: _green,
-                  child: Icon(template.$3),
-                ),
-                title: Text(
-                  template.$1,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-                subtitle: Text(template.$2),
-                trailing: const Icon(Icons.chevron_right),
+  Widget build(BuildContext context) {
+    final sheetHeight = MediaQuery.sizeOf(context).height * .72;
+    return SafeArea(
+      child: SizedBox(
+        height: sheetHeight,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Chọn mẫu thực phẩm',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
               ),
-            ),
+              const SizedBox(height: 4),
+              const Text(
+                'Bạn vẫn có thể chọn lại từng món trước khi thêm vào tủ.',
+                style: TextStyle(fontSize: 12, color: _muted),
+              ),
+              const SizedBox(height: 14),
+              Expanded(
+                child: ListView(
+                  padding: EdgeInsets.zero,
+                  children: templates
+                      .map(
+                        (template) => Card(
+                          margin: const EdgeInsets.only(bottom: 9),
+                          child: ListTile(
+                            onTap: () => Navigator.pop(
+                              context,
+                              template.buildLines(),
+                            ),
+                            leading: CircleAvatar(
+                              backgroundColor: const Color(0xFFE7FAF3),
+                              foregroundColor: _green,
+                              child: Icon(template.icon),
+                            ),
+                            title: Text(
+                              template.title,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            subtitle: Text(template.description),
+                            trailing: const Icon(Icons.chevron_right),
+                          ),
+                        ),
+                      )
+                      .toList(growable: false),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _ManualFoodDialog extends StatefulWidget {
@@ -1953,7 +2118,7 @@ class _ManualFoodDialogState extends State<_ManualFoodDialog> {
   final name = TextEditingController();
   final quantity = TextEditingController();
   final price = TextEditingController();
-  final items = <(String, String, String)>[];
+  final items = <ReceiptLine>[];
   String unit = 'gram';
   String expiry = '3 ngày';
 
@@ -1966,16 +2131,38 @@ class _ManualFoodDialogState extends State<_ManualFoodDialog> {
   }
 
   void _addItem() {
-    if (name.text.trim().isEmpty || quantity.text.trim().isEmpty) return;
-    final formattedPrice = price.text.trim().isEmpty
-        ? 'Chưa nhập giá'
-        : '${price.text.trim()}đ';
+    final parsedQuantity = double.tryParse(
+      quantity.text.trim().replaceAll(',', '.'),
+    );
+    final parsedPrice = int.tryParse(
+      price.text.replaceAll(RegExp(r'[^0-9]'), ''),
+    );
+    final days = int.tryParse(
+      RegExp(r'\d+').firstMatch(expiry)?.group(0) ?? '',
+    );
+    if (name.text.trim().isEmpty ||
+        parsedQuantity == null ||
+        parsedQuantity <= 0) {
+      return;
+    }
+    final totalPrice = parsedPrice ?? 0;
     setState(() {
-      items.add((
-        name.text.trim(),
-        '${quantity.text.trim()} $unit · HSD dự kiến: $expiry',
-        formattedPrice,
-      ));
+      items.add(
+        ReceiptLine(
+          rawName: name.text.trim(),
+          normalizedName: name.text.trim(),
+          quantity: parsedQuantity,
+          unit: unit,
+          unitPriceVnd: (parsedPrice == null || parsedQuantity == 0)
+              ? 0
+              : (totalPrice / parsedQuantity).round(),
+          totalPriceVnd: totalPrice,
+          estimatedExpiryDate: days == null
+              ? null
+              : DateTime.now().add(Duration(days: days)),
+          confidence: 1,
+        ),
+      );
       name.clear();
       quantity.clear();
       price.clear();
@@ -2083,8 +2270,11 @@ class _ManualFoodDialogState extends State<_ManualFoodDialog> {
                     radius: 14,
                     child: Text('${entry.key + 1}'),
                   ),
-                  title: Text(entry.value.$1),
-                  subtitle: Text(entry.value.$2),
+                  title: Text(entry.value.normalizedName),
+                  subtitle: Text(
+                    '${entry.value.quantity} ${entry.value.unit} · '
+                    'HSD dự kiến: $expiry',
+                  ),
                   trailing: IconButton(
                     onPressed: () => setState(() => items.removeAt(entry.key)),
                     icon: const Icon(Icons.close, size: 18),
@@ -2638,69 +2828,77 @@ class _RecipesScreenState extends State<RecipesScreen> {
   int category = 0;
   String query = '';
   final recipes = const [
-    (
-      'Mì cay trứng lòng đào',
-      '15 phút',
-      'Dễ',
-      '90% có sẵn',
-      10,
-      'Mì · Trứng gà · Hành lá · Nước mắm',
+    RecipeCatalogItem(
+      id: 'spicy-egg-noodles',
+      name: 'Mì cay trứng lòng đào',
+      durationMinutes: 15,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 10,
+      ingredients: ['Mì', 'Trứng gà', 'Hành lá', 'Nước mắm'],
+      categories: {RecipeCategory.breakfast},
     ),
-    (
-      'Canh rau muống nấu tôm',
-      '15 phút',
-      'Dễ',
-      '100% có sẵn',
-      11,
-      'Rau muống · Tôm sú · Hành lá',
+    RecipeCatalogItem(
+      id: 'water-spinach-shrimp-soup',
+      name: 'Canh rau muống nấu tôm',
+      durationMinutes: 15,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 11,
+      ingredients: ['Rau muống', 'Tôm sú', 'Hành lá'],
+      categories: {RecipeCategory.summer},
     ),
-    (
-      'Bò xào cải thảo',
-      '20 phút',
-      'Dễ',
-      '80% có sẵn',
-      12,
-      'Thịt bò Mỹ · Cải thảo · Dưa leo',
+    RecipeCatalogItem(
+      id: 'beef-napa-cabbage-stir-fry',
+      name: 'Bò xào cải thảo',
+      durationMinutes: 20,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 12,
+      ingredients: ['Thịt bò Mỹ', 'Cải thảo', 'Dưa leo'],
+      categories: {RecipeCategory.dinner},
     ),
-    (
-      'Bánh mì ốp la trứng gà',
-      '10 phút',
-      'Dễ',
-      '75% có sẵn',
-      13,
-      'Trứng gà · Bánh mì · Hành lá',
+    RecipeCatalogItem(
+      id: 'egg-banh-mi',
+      name: 'Bánh mì ốp la trứng gà',
+      durationMinutes: 10,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 13,
+      ingredients: ['Trứng gà', 'Bánh mì', 'Hành lá'],
+      categories: {RecipeCategory.breakfast},
     ),
-    (
-      'Cá basa kho tiêu',
-      '25 phút',
-      'Vừa',
-      '90% có sẵn',
-      14,
-      'Cá basa fillet · Nước mắm · Hành lá',
+    RecipeCatalogItem(
+      id: 'pepper-braised-basa',
+      name: 'Cá basa kho tiêu',
+      durationMinutes: 25,
+      difficulty: RecipeDifficulty.medium,
+      imageIndex: 14,
+      ingredients: ['Cá basa fillet', 'Nước mắm', 'Hành lá'],
+      categories: {RecipeCategory.dinner},
     ),
-    (
-      'Salad cá thu dầu mè',
-      '5 phút',
-      'Dễ',
-      '90% có sẵn',
-      15,
-      'Cá thu · Dưa leo · Hành lá',
+    RecipeCatalogItem(
+      id: 'mackerel-sesame-salad',
+      name: 'Salad cá thu dầu mè',
+      durationMinutes: 5,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 15,
+      ingredients: ['Cá thu', 'Dưa leo', 'Hành lá'],
+      categories: {RecipeCategory.summer},
     ),
-    (
-      'Đậu hũ sốt cà chua',
-      '20 phút',
-      'Dễ',
-      '100% có sẵn',
-      4,
-      'Đậu hũ · Cà chua · Hành lá',
+    RecipeCatalogItem(
+      id: 'tofu-tomato-sauce',
+      name: 'Đậu hũ sốt cà chua',
+      durationMinutes: 20,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 4,
+      ingredients: ['Đậu hũ', 'Cà chua', 'Hành lá'],
+      categories: {RecipeCategory.summer, RecipeCategory.dinner},
     ),
-    (
-      'Phở bò tái',
-      '45 phút',
-      'Khó',
-      '60% có sẵn',
-      2,
-      'Thịt bò Mỹ · Bánh phở · Hành lá',
+    RecipeCatalogItem(
+      id: 'pho-bo-tai',
+      name: 'Phở bò tái',
+      durationMinutes: 45,
+      difficulty: RecipeDifficulty.hard,
+      imageIndex: 2,
+      ingredients: ['Thịt bò Mỹ', 'Bánh phở', 'Hành lá'],
+      categories: {RecipeCategory.breakfast},
     ),
   ];
 
@@ -2708,15 +2906,22 @@ class _RecipesScreenState extends State<RecipesScreen> {
   Widget build(BuildContext context) => ValueListenableBuilder<int>(
     valueListenable: inventoryRevision,
     builder: (context, _, _) {
+      final activeCategory = switch (category) {
+        1 => RecipeCategory.summer,
+        2 => RecipeCategory.breakfast,
+        3 => RecipeCategory.dinner,
+        _ => null,
+      };
+      final availableRecipeCount = recipes.where((recipe) {
+        final detail = recipe.toDetailData();
+        final availableCount = detail.ingredients
+            .where((ingredient) => ingredient.available)
+            .length;
+        return detail.ingredients.isNotEmpty &&
+            availableCount * 2 >= detail.ingredients.length;
+      }).length;
       final filteredRecipes = recipes.where((recipe) {
-        final detail = RecipeDetailData.fromSummary(
-          name: recipe.$1,
-          time: recipe.$2,
-          level: recipe.$3,
-          match: recipe.$4,
-          image: recipe.$5,
-          ingredientsText: recipe.$6,
-        );
+        final detail = recipe.toDetailData();
         final matchesSearch =
             query.trim().isEmpty ||
             detail.name.toLowerCase().contains(query.trim().toLowerCase()) ||
@@ -2724,12 +2929,9 @@ class _RecipesScreenState extends State<RecipesScreen> {
               (item) =>
                   item.name.toLowerCase().contains(query.trim().toLowerCase()),
             );
-        final matchesCategory = switch (category) {
-          1 => recipe.$5 == 11 || recipe.$5 == 15 || recipe.$5 == 4,
-          2 => recipe.$5 == 10 || recipe.$5 == 13 || recipe.$5 == 2,
-          3 => recipe.$5 == 12 || recipe.$5 == 14 || recipe.$5 == 4,
-          _ => true,
-        };
+        final matchesCategory =
+            activeCategory == null ||
+            recipe.categories.contains(activeCategory);
         return matchesSearch && matchesCategory;
       }).toList();
       return Column(
@@ -2765,7 +2967,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Có ${recipes.length} món phù hợp',
+                        'Có $availableRecipeCount món có từ 50% nguyên liệu sẵn',
                         style: TextStyle(
                           fontWeight: FontWeight.w800,
                           color: _ink,
@@ -2773,7 +2975,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
                       ),
                       SizedBox(height: 3),
                       Text(
-                        'Ưu tiên món có từ 50% nguyên liệu trong tủ',
+                        'Tỉ lệ được tính theo tủ lạnh gia đình đang chọn.',
                         style: TextStyle(fontSize: 10, color: _muted),
                       ),
                     ],
@@ -2821,14 +3023,8 @@ class _RecipesScreenState extends State<RecipesScreen> {
                     ),
                   ),
                 ...filteredRecipes.map(
-                  (r) => _RecipeCard(
-                    name: r.$1,
-                    time: r.$2,
-                    level: r.$3,
-                    match: r.$4,
-                    image: r.$5,
-                    ingredients: r.$6,
-                  ),
+                  (recipe) =>
+                      _RecipeCard(key: ValueKey(recipe.id), recipe: recipe),
                 ),
                 Card(
                   color: const Color(0xFFFFFBEB),
@@ -2873,32 +3069,18 @@ class _RecipesScreenState extends State<RecipesScreen> {
 }
 
 class _RecipeCard extends StatelessWidget {
-  const _RecipeCard({
-    required this.name,
-    required this.time,
-    required this.level,
-    required this.match,
-    required this.image,
-    required this.ingredients,
-  });
-  final String name, time, level, match, ingredients;
-  final int image;
+  const _RecipeCard({super.key, required this.recipe});
+  final RecipeCatalogItem recipe;
+
   @override
   Widget build(BuildContext context) {
-    final recipe = RecipeDetailData.fromSummary(
-      name: name,
-      time: time,
-      level: level,
-      match: match,
-      image: image,
-      ingredientsText: ingredients,
-    );
+    final detail = recipe.toDetailData();
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => RecipeDetailScreen(recipe: recipe)),
+          MaterialPageRoute(builder: (_) => RecipeDetailScreen(recipe: detail)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2906,7 +3088,7 @@ class _RecipeCard extends StatelessWidget {
             Stack(
               children: [
                 Image.asset(
-                  recipeImageAssetFor(name, image),
+                  recipeImageAssetFor(recipe.name, recipe.imageIndex),
                   height: 158,
                   width: double.infinity,
                   fit: BoxFit.cover,
@@ -2915,12 +3097,16 @@ class _RecipeCard extends StatelessWidget {
                 Positioned(
                   top: 9,
                   left: 9,
-                  child: _TinyBadge('$time  ·  $level', Colors.white, _ink),
+                  child: _TinyBadge(
+                    '${recipe.timeLabel}  ·  ${recipe.difficultyLabel}',
+                    Colors.white,
+                    _ink,
+                  ),
                 ),
                 Positioned(
                   top: 9,
                   right: 9,
-                  child: _TinyBadge(recipe.match, _green, Colors.white),
+                  child: _TinyBadge(detail.match, _green, Colors.white),
                 ),
               ],
             ),
@@ -2930,7 +3116,7 @@ class _RecipeCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    name,
+                    recipe.name,
                     style: const TextStyle(
                       fontWeight: FontWeight.w800,
                       fontSize: 15,
@@ -2946,8 +3132,7 @@ class _RecipeCard extends StatelessWidget {
                   Wrap(
                     spacing: 5,
                     runSpacing: 5,
-                    children: ingredients
-                        .split(' · ')
+                    children: recipe.ingredients
                         .map(
                           (x) => _TinyBadge(x, const Color(0xFFE8FBF4), _green),
                         )
@@ -3031,10 +3216,8 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
             ..clear()
             ..addAll(
               remoteItems
-                  .asMap()
-                  .entries
-                  .where((entry) => entry.value.checked)
-                  .map((entry) => entry.key),
+                  .where((entry) => entry.checked)
+                  .map((entry) => entry.item.id),
             );
         });
         shoppingRevision.value++;
@@ -3066,7 +3249,9 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
         ..addAll(snapshot.items);
       checked
         ..clear()
-        ..addAll(snapshot.checked.where((index) => index < items.length));
+        ..addAll(
+          snapshot.checked.where((id) => items.any((item) => item.id == id)),
+        );
     });
     shoppingRevision.value++;
   }
@@ -3083,13 +3268,16 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
     );
     if (result != null && mounted) {
       final duplicate = items.any(
-        (item) =>
-            item.$1.trim().toLowerCase() == result.$1.trim().toLowerCase() &&
-            item.$5.trim().toLowerCase() == result.$5.trim().toLowerCase(),
+        (item) => shoppingIdentity(item) == shoppingIdentity(result),
       );
       if (duplicate) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${result.$1} đã có trong danh sách')),
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.clearSnackBars();
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('${result.name} đã có trong danh sách'),
+            duration: const Duration(seconds: 2),
+          ),
         );
         return;
       }
@@ -3100,23 +3288,17 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
       _shoppingMutationRevision++;
       _persistShopping();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Đã thêm ${result.$1} vào danh sách')),
+        SnackBar(content: Text('Đã thêm ${result.name} vào danh sách')),
       );
     }
   }
 
   void _deleteShoppingItem(int index) {
     final removed = items[index];
-    final wasChecked = checked.contains(index);
+    final wasChecked = checked.contains(removed.id);
     setState(() {
       items.removeAt(index);
-      final shiftedChecked = checked
-          .where((value) => value != index)
-          .map((value) => value > index ? value - 1 : value)
-          .toSet();
-      checked
-        ..clear()
-        ..addAll(shiftedChecked);
+      checked.remove(removed.id);
     });
     _shoppingMutationRevision++;
     if (AppServices.configured &&
@@ -3134,19 +3316,13 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Đã xóa ${removed.$1}'),
+        content: Text('Đã xóa ${removed.name}'),
         action: SnackBarAction(
           label: 'Hoàn tác',
           onPressed: () {
             setState(() {
-              final shiftedChecked = checked
-                  .map((value) => value >= index ? value + 1 : value)
-                  .toSet();
-              checked
-                ..clear()
-                ..addAll(shiftedChecked);
               items.insert(index, removed);
-              if (wasChecked) checked.add(index);
+              if (wasChecked) checked.add(removed.id);
             });
             _shoppingMutationRevision++;
             _persistShopping();
@@ -3161,7 +3337,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
     const categories = ['Tất cả', 'Rau củ', 'Thịt cá', 'Đồ khô', 'Khác'];
     final indexedItems = items.asMap().entries.where((entry) {
       return selectedCategory == 0 ||
-          entry.value.$5 == categories[selectedCategory];
+          entry.value.category == categories[selectedCategory];
     }).toList();
     final remaining = items.length - checked.length;
     return Column(
@@ -3257,14 +3433,14 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                         (e) => _ShoppingItem(
                           index: e.key,
                           item: e.value,
-                          checked: checked.contains(e.key),
+                          checked: checked.contains(e.value.id),
                           onChanged: () {
-                            final purchased = !checked.contains(e.key);
+                            final purchased = !checked.contains(e.value.id);
                             setState(() {
                               if (purchased) {
-                                checked.add(e.key);
+                                checked.add(e.value.id);
                               } else {
-                                checked.remove(e.key);
+                                checked.remove(e.value.id);
                               }
                             });
                             setShoppingPurchased(e.value, purchased);
@@ -3274,7 +3450,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                               SnackBar(
                                 content: Text(
                                   purchased
-                                      ? 'Đã chuyển ${e.value.$1} vào tủ lạnh'
+                                      ? 'Đã chuyển ${e.value.name} vào tủ lạnh'
                                       : 'Đã bỏ trạng thái đã mua',
                                 ),
                                 duration: const Duration(seconds: 2),
@@ -3350,7 +3526,7 @@ class _ShoppingItem extends StatelessWidget {
   final VoidCallback onDelete;
   @override
   Widget build(BuildContext context) {
-    final urgent = item.$3 == 'Cần mua gấp';
+    final urgent = item.priority == 'Cần mua gấp';
     return InkWell(
       onTap: onChanged,
       child: Container(
@@ -3375,7 +3551,7 @@ class _ShoppingItem extends StatelessWidget {
                     children: [
                       Flexible(
                         child: Text(
-                          item.$1,
+                          item.name,
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w800,
@@ -3388,15 +3564,15 @@ class _ShoppingItem extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       _TinyBadge(
-                        item.$3,
+                        item.priority,
                         urgent
                             ? const Color(0xFFFFECEE)
-                            : item.$3 == 'Bình thường'
+                            : item.priority == 'Bình thường'
                             ? const Color(0xFFFFF8E5)
                             : const Color(0xFFF1F3F5),
                         urgent
                             ? Colors.redAccent
-                            : item.$3 == 'Bình thường'
+                            : item.priority == 'Bình thường'
                             ? Colors.orange
                             : _muted,
                       ),
@@ -3404,14 +3580,14 @@ class _ShoppingItem extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    item.$2,
+                    item.detail,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 11, color: _muted),
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    'Thêm bởi ${item.$4}',
+                    'Thêm bởi ${item.createdBy}',
                     style: const TextStyle(fontSize: 11, color: _muted),
                   ),
                 ],
@@ -3451,6 +3627,7 @@ class _AddShoppingItemDialogState extends State<AddShoppingItemDialog> {
   String category = 'Rau củ';
   String priority = 'Bình thường';
   bool showNameError = false;
+  bool showQuantityError = false;
 
   @override
   void dispose() {
@@ -3466,17 +3643,28 @@ class _AddShoppingItemDialogState extends State<AddShoppingItemDialog> {
       setState(() => showNameError = true);
       return;
     }
-    final quantity = quantityController.text.trim().isEmpty
-        ? '1'
-        : quantityController.text.trim();
+    final quantityText = quantityController.text.trim();
+    final quantity = quantityText.isEmpty
+        ? 1.0
+        : double.tryParse(quantityText.replaceAll(',', '.'));
+    if (quantity == null || quantity <= 0) {
+      setState(() => showQuantityError = true);
+      return;
+    }
     final note = noteController.text.trim();
-    Navigator.pop(context, (
-      name,
-      '$quantity $unit${note.isEmpty ? '' : ' · $note'}',
-      priority,
-      'Bạn',
-      category,
-    ));
+    Navigator.pop(
+      context,
+      ShoppingSummary(
+        householdId: HouseholdService.instance.active.value?.id,
+        name: name,
+        quantity: quantity,
+        unit: unit,
+        note: note,
+        priority: priority,
+        createdBy: 'Bạn',
+        category: category,
+      ),
+    );
   }
 
   @override
@@ -3547,11 +3735,21 @@ class _AddShoppingItemDialogState extends State<AddShoppingItemDialog> {
                             _FormLabel('Số lượng'),
                             TextField(
                               controller: quantityController,
+                              onChanged: (_) {
+                                if (showQuantityError) {
+                                  setState(() => showQuantityError = false);
+                                }
+                              },
                               keyboardType:
                                   const TextInputType.numberWithOptions(
                                     decimal: true,
                                   ),
-                              decoration: _inputDecoration('1'),
+                              decoration: _inputDecoration(
+                                '1',
+                                error: showQuantityError
+                                    ? 'Nhập số lượng lớn hơn 0'
+                                    : null,
+                              ),
                             ),
                           ],
                         );
@@ -3750,9 +3948,7 @@ class _LegacyReportsScreen extends StatelessWidget {
       valueListenable: inventoryRevision,
       builder: (context, _, _) {
         int priceOf(FoodSummary food) {
-          final parts = food.$2.split('·');
-          final raw = parts.length > 1 ? parts.last : parts.first;
-          return int.tryParse(raw.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+          return food.priceVnd;
         }
 
         String vnd(int value) =>
@@ -3762,7 +3958,7 @@ class _LegacyReportsScreen extends StatelessWidget {
           (sum, food) => sum + priceOf(food),
         );
         final expiredValue = inventoryFoods
-            .where((food) => food.$3 == 'Hết hạn')
+            .where((food) => food.status == 'Hết hạn')
             .fold<int>(0, (sum, food) => sum + priceOf(food));
         final wastePercent = totalValue == 0
             ? 0

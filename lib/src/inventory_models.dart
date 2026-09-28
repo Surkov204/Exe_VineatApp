@@ -1,15 +1,100 @@
 import 'dart:math';
 
-typedef ShoppingSummary = (String, String, String, String, String);
+class ShoppingSummary {
+  ShoppingSummary({
+    String? id,
+    this.householdId,
+    required this.name,
+    required this.quantity,
+    required this.unit,
+    this.note = '',
+    this.priority = 'Bình thường',
+    this.createdBy = 'Bạn',
+    this.category = 'Khác',
+  }) : id = id ?? newLocalId();
+
+  final String id;
+  final String? householdId;
+  final String name;
+  final double quantity;
+  final String unit;
+  final String note;
+  final String priority;
+  final String createdBy;
+  final String category;
+
+  String get detail =>
+      '${_formatQuantity(quantity)} $unit${note.isEmpty ? '' : ' · $note'}';
+
+  ShoppingSummary copyWith({
+    String? id,
+    String? householdId,
+    String? name,
+    double? quantity,
+    String? unit,
+    String? note,
+    String? priority,
+    String? createdBy,
+    String? category,
+  }) => ShoppingSummary(
+    id: id ?? this.id,
+    householdId: householdId ?? this.householdId,
+    name: name ?? this.name,
+    quantity: quantity ?? this.quantity,
+    unit: unit ?? this.unit,
+    note: note ?? this.note,
+    priority: priority ?? this.priority,
+    createdBy: createdBy ?? this.createdBy,
+    category: category ?? this.category,
+  );
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'household_id': householdId,
+    'name': name,
+    'quantity': quantity,
+    'unit': unit,
+    'note': note,
+    'priority': priority,
+    'created_by': createdBy,
+    'category': category,
+  };
+
+  factory ShoppingSummary.fromJson(Map value) {
+    final legacyDetail = value['detail'] as String? ?? '';
+    final legacyParts = legacyDetail
+        .split('·')
+        .map((part) => part.trim())
+        .toList();
+    final legacyAmount = _parseAmount(legacyParts.firstOrNull ?? '1 phần');
+    final legacyNote = legacyParts.skip(1).join(' · ');
+    final quantity = value['quantity'] is num
+        ? (value['quantity'] as num).toDouble()
+        : legacyAmount.quantity;
+    return ShoppingSummary(
+      id: value['id'] as String?,
+      householdId: value['household_id'] as String?,
+      name: value['name'] as String? ?? 'Thực phẩm',
+      quantity: quantity,
+      unit: value['unit'] as String? ?? legacyAmount.unit,
+      note: value['note'] as String? ?? legacyNote,
+      priority: value['priority'] as String? ?? 'Bình thường',
+      createdBy:
+          value['created_by'] as String? ?? value['by'] as String? ?? 'Bạn',
+      category: value['category'] as String? ?? 'Khác',
+    );
+  }
+}
 
 String shoppingIdentity(ShoppingSummary item) =>
-    '${item.$1.trim().toLowerCase()}|${item.$5.trim().toLowerCase()}';
+    '${item.name.trim().toLowerCase()}|${item.category.trim().toLowerCase()}';
 
-/// Inventory data has a stable identity and typed quantities. `$1`-`$4` are
-/// temporary presentation adapters for the existing compact widgets.
+/// Inventory data has a stable identity and typed quantities. The display
+/// labels are named getters so UI code never depends on tuple positions.
 class FoodSummary {
   FoodSummary({
     String? id,
+    this.householdId,
     required this.name,
     required this.quantity,
     required this.unit,
@@ -21,6 +106,7 @@ class FoodSummary {
   }) : id = id ?? newLocalId();
 
   final String id;
+  final String? householdId;
   final String name;
   final double quantity;
   final String unit;
@@ -30,14 +116,13 @@ class FoodSummary {
   final String? imagePath;
   final String note;
 
-  String get $1 => name;
-  String get $2 =>
+  String get detail =>
       '${_formatQuantity(quantity)} $unit · ${_formatVnd(priceVnd)}';
-  String get $3 => _freshnessLabel(expiry);
-  int get $4 => imageIndex;
+  String get status => _freshnessLabel(expiry);
 
   factory FoodSummary.fromLegacy({
     String? id,
+    String? householdId,
     required String name,
     required String detail,
     required String status,
@@ -61,9 +146,10 @@ class FoodSummary {
         : DateTime.now().add(const Duration(days: 14));
     return FoodSummary(
       id: id,
+      householdId: householdId,
       name: name,
-      quantity: amount.$1,
-      unit: amount.$2,
+      quantity: amount.quantity,
+      unit: amount.unit,
       priceVnd: price,
       expiry: expiryDate ?? expiryFromStatus,
       imageIndex: imageIndex,
@@ -74,6 +160,7 @@ class FoodSummary {
 
   factory FoodSummary.fromRecord(InventoryItemRecord record) => FoodSummary(
     id: record.id,
+    householdId: record.householdId,
     name: record.name,
     quantity: record.quantity,
     unit: record.unit,
@@ -86,6 +173,7 @@ class FoodSummary {
 
   FoodSummary copyWith({
     String? id,
+    String? householdId,
     String? name,
     double? quantity,
     String? unit,
@@ -96,6 +184,7 @@ class FoodSummary {
     String? note,
   }) => FoodSummary(
     id: id ?? this.id,
+    householdId: householdId ?? this.householdId,
     name: name ?? this.name,
     quantity: quantity ?? this.quantity,
     unit: unit ?? this.unit,
@@ -108,6 +197,7 @@ class FoodSummary {
 
   Map<String, Object?> toJson() => {
     'id': id,
+    'household_id': householdId,
     'name': name,
     'quantity': quantity,
     'unit': unit,
@@ -127,6 +217,7 @@ class FoodSummary {
     if (value['quantity'] is num) {
       return FoodSummary(
         id: value['id'] as String?,
+        householdId: value['household_id'] as String?,
         name: name,
         quantity: (value['quantity'] as num).toDouble(),
         unit: value['unit'] as String? ?? 'phần',
@@ -142,11 +233,12 @@ class FoodSummary {
     }
     return FoodSummary.fromLegacy(
       id: value['id'] as String?,
+      householdId: value['household_id'] as String?,
       name: name,
       detail: value['detail'] as String? ?? '1 phần',
       status: value['status'] as String? ?? 'Tươi ngon',
       imageIndex: imageIndex,
-      imagePath: value['imagePath'] as String?,
+      imagePath: value['image_path'] as String? ?? value['imagePath'] as String?,
       note: value['note'] as String? ?? '',
     );
   }
@@ -156,6 +248,13 @@ class FoodSummary {
 
   @override
   int get hashCode => id.hashCode;
+}
+
+class InventoryUsage {
+  const InventoryUsage({required this.food, required this.quantity});
+
+  final FoodSummary food;
+  final double quantity;
 }
 
 String _freshnessLabel(DateTime? expiry) {
@@ -184,6 +283,7 @@ String _formatVnd(int value) =>
 class InventoryItemRecord {
   const InventoryItemRecord({
     required this.id,
+    this.householdId,
     required this.name,
     required this.quantity,
     required this.unit,
@@ -195,6 +295,7 @@ class InventoryItemRecord {
   });
 
   final String id;
+  final String? householdId;
   final String name;
   final double quantity;
   final String unit;
@@ -207,10 +308,12 @@ class InventoryItemRecord {
   factory InventoryItemRecord.fromSummary(
     FoodSummary summary, {
     String? id,
+    String? householdId,
     String? imagePath,
   }) {
     return InventoryItemRecord(
       id: id ?? summary.id,
+      householdId: householdId ?? summary.householdId,
       name: summary.name,
       quantity: summary.quantity,
       unit: summary.unit,
@@ -224,6 +327,7 @@ class InventoryItemRecord {
 
   Map<String, Object?> toJson() => {
     'id': id,
+    'household_id': householdId,
     'name': name,
     'quantity': quantity,
     'unit': unit,
@@ -233,6 +337,24 @@ class InventoryItemRecord {
     'image_path': imagePath,
     'note': note,
   };
+
+  factory InventoryItemRecord.fromJson(Map value) => InventoryItemRecord(
+    id: value['id'] as String? ?? newLocalId(),
+    householdId: value['household_id'] as String?,
+    name: value['name'] as String? ?? 'Thực phẩm',
+    quantity: (value['quantity'] as num?)?.toDouble() ?? 1,
+    unit: value['unit'] as String? ?? 'phần',
+    priceVnd: (value['price_vnd'] as num?)?.toInt() ?? 0,
+    expiry: DateTime.tryParse(
+      value['expiry'] as String? ?? value['expiry_date'] as String? ?? '',
+    ),
+    imageIndex:
+        (value['image_index'] as num?)?.toInt() ??
+        (value['image'] as num?)?.toInt() ??
+        0,
+    imagePath: value['image_path'] as String? ?? value['imagePath'] as String?,
+    note: value['note'] as String? ?? '',
+  );
 }
 
 class InventoryEvent {
@@ -293,20 +415,25 @@ class ShoppingInventoryLink {
 
   Map<String, Object?> toJson(String key) => {
     'key': key,
-    'name': food.$1,
-    'detail': food.$2,
-    'status': food.$3,
-    'image': food.$4,
+    ...food.toJson(),
+    'name': food.name,
+    'detail': food.detail,
+    'status': food.status,
+    'image': food.imageIndex,
     'created': createdByPurchase,
   };
 
   factory ShoppingInventoryLink.fromJson(Map value) => ShoppingInventoryLink(
-    food: FoodSummary.fromLegacy(
-      name: value['name'] as String? ?? '',
-      detail: value['detail'] as String? ?? '',
-      status: value['status'] as String? ?? 'Tươi ngon',
-      imageIndex: (value['image'] as num?)?.toInt() ?? 0,
-    ),
+    food: value['quantity'] is num
+        ? FoodSummary.fromJson(value)
+        : FoodSummary.fromLegacy(
+            id: value['id'] as String?,
+            householdId: value['household_id'] as String?,
+            name: value['name'] as String? ?? '',
+            detail: value['detail'] as String? ?? '',
+            status: value['status'] as String? ?? 'Tươi ngon',
+            imageIndex: (value['image'] as num?)?.toInt() ?? 0,
+          ),
     createdByPurchase: value['created'] as bool? ?? false,
   );
 }
@@ -322,12 +449,24 @@ String newLocalId() {
   return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
 }
 
-(double, String) _parseAmount(String value) {
+class _ParsedAmount {
+  const _ParsedAmount({required this.quantity, required this.unit});
+
+  final double quantity;
+  final String unit;
+}
+
+_ParsedAmount _parseAmount(String value) {
   final match = RegExp(r'^\s*(\d+(?:[.,]\d+)?)\s*(.*)$').firstMatch(value);
-  if (match == null) return (1, value.trim().isEmpty ? 'phần' : value.trim());
-  return (
-    double.tryParse(match.group(1)!.replaceAll(',', '.')) ?? 1,
-    match.group(2)!.trim().isEmpty ? 'phần' : match.group(2)!.trim(),
+  if (match == null) {
+    return _ParsedAmount(
+      quantity: 1,
+      unit: value.trim().isEmpty ? 'phần' : value.trim(),
+    );
+  }
+  return _ParsedAmount(
+    quantity: double.tryParse(match.group(1)!.replaceAll(',', '.')) ?? 1,
+    unit: match.group(2)!.trim().isEmpty ? 'phần' : match.group(2)!.trim(),
   );
 }
 

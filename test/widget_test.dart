@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,6 +14,8 @@ import 'package:vineat_app/src/app_tutorial.dart'
 import 'package:vineat_app/src/food_detail.dart' show FoodDetailScreen;
 import 'package:vineat_app/src/fridge_showcase.dart' show SmartFridgeShowcase;
 import 'package:vineat_app/src/inventory_store.dart';
+import 'package:vineat_app/src/inventory_models.dart'
+    show ShoppingInventoryLink;
 import 'package:vineat_app/src/profile_screen.dart' show ProfileScreen;
 import 'package:vineat_app/src/recipe_detail.dart' show recipeImageAssetFor;
 import 'package:vineat_app/src/screens.dart' show FridgeScreen;
@@ -62,6 +65,125 @@ void main() {
         'assets/recipes/${entry.value}.webp',
       );
     }
+  });
+
+  test(
+    'inventory models preserve household scope through local persistence',
+    () {
+      const record = InventoryItemRecord(
+        id: 'food-1',
+        householdId: 'household-a',
+        name: 'Cà chua',
+        quantity: 3,
+        unit: 'quả',
+        priceVnd: 12000,
+        expiry: null,
+        imageIndex: 1,
+      );
+      final restored = InventoryItemRecord.fromJson(record.toJson());
+      final summary = FoodSummary.fromJson(
+        FoodSummary.fromRecord(restored).toJson(),
+      );
+
+      expect(restored.householdId, 'household-a');
+      expect(summary.householdId, 'household-a');
+      expect(summary.copyWith(quantity: 2).householdId, 'household-a');
+      final purchaseLink = ShoppingInventoryLink(
+        food: summary,
+        createdByPurchase: true,
+      );
+      final restoredLink = ShoppingInventoryLink.fromJson(
+        purchaseLink.toJson('shopping-1'),
+      );
+      expect(restoredLink.food.id, summary.id);
+      expect(restoredLink.food.householdId, 'household-a');
+    },
+  );
+
+  test('shopping items use stable IDs and upgrade legacy detail records', () {
+    final legacy = ShoppingSummary.fromJson({
+      'name': 'Dứa',
+      'detail': '2 quả · Chín vàng',
+      'priority': 'Cần mua gấp',
+      'by': 'Mẹ',
+      'category': 'Rau củ',
+    });
+    final restored = ShoppingSummary.fromJson(legacy.toJson());
+
+    expect(legacy.id, isNotEmpty);
+    expect(restored.id, legacy.id);
+    expect(restored.name, 'Dứa');
+    expect(restored.quantity, 2);
+    expect(restored.unit, 'quả');
+    expect(restored.note, 'Chín vàng');
+    expect(restored.priority, 'Cần mua gấp');
+    expect(restored.createdBy, 'Mẹ');
+  });
+
+  test('legacy shopping checkbox index restores as a stable item ID', () async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      'vineat.demo.shopping.v1',
+      jsonEncode({
+        'items': [
+          {
+            'name': 'Dứa',
+            'detail': '2 quả · Chín vàng',
+            'priority': 'Cần mua gấp',
+            'by': 'Mẹ',
+            'category': 'Rau củ',
+          },
+        ],
+        'checked': [0],
+      }),
+    );
+
+    final snapshot = await restoreShopping();
+    expect(snapshot, isNotNull);
+    expect(snapshot!.checked, {snapshot.items.single.id});
+  });
+
+  test('inventory restore reads typed and legacy cached records', () async {
+    SharedPreferences.setMockInitialValues({});
+    await resetDemoInventory();
+    final typedFood = FoodSummary(
+      id: 'typed-food',
+      householdId: 'household-a',
+      name: 'Cà chua',
+      quantity: 2.5,
+      unit: 'kg',
+      priceVnd: 18000,
+      expiry: DateTime(2026, 10, 3),
+      imageIndex: 2,
+      imagePath: r'C:\demo\tomato.jpg',
+      note: 'Để ngăn mát',
+    );
+    SharedPreferences.setMockInitialValues({
+      'vineat.demo.inventory.v1': jsonEncode([
+        typedFood.toJson(),
+        {
+          'id': 'legacy-food',
+          'name': 'Dứa',
+          'detail': '1 quả · 12.000đ',
+          'status': 'Còn 4 ngày',
+          'image': 5,
+          'imagePath': r'C:\demo\pineapple.jpg',
+        },
+      ]),
+    });
+
+    await restoreInventory();
+
+    expect(inventoryFoods, hasLength(2));
+    expect(inventoryFoods.first.name, 'Cà chua');
+    expect(inventoryFoods.first.quantity, 2.5);
+    expect(inventoryFoods.first.householdId, 'household-a');
+    expect(inventoryFoods.first.note, 'Để ngăn mát');
+    expect(customFoodImagePaths['typed-food'], r'C:\demo\tomato.jpg');
+    expect(inventoryFoods.last.name, 'Dứa');
+    expect(inventoryFoods.last.imageIndex, 5);
+    expect(customFoodImagePaths['legacy-food'], r'C:\demo\pineapple.jpg');
   });
 
   setUp(() {
@@ -242,6 +364,7 @@ void main() {
 
     await tester.pumpWidget(const VineatApp());
     await tester.pumpAndSettle();
+    expect(inventoryFoods.map((food) => food.name), contains('Cà chua'));
 
     final priorityChip = find.ancestor(
       of: find.text('3 cần ưu tiên'),
@@ -258,6 +381,13 @@ void main() {
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.text('Bỏ lọc'));
+    await tester.pumpAndSettle();
+    expect(find.text('Thực phẩm trong tủ'), findsOneWidget);
+    final fridgeList = find.descendant(
+      of: find.byType(FridgeScreen),
+      matching: find.byType(ListView),
+    );
+    await tester.drag(fridgeList, const Offset(0, -300));
     await tester.pumpAndSettle();
     expect(find.text('Cà chua'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -306,13 +436,15 @@ void main() {
     final preview = await localDemoPreviewSnapshot();
     expect(preview.length, demoInventorySeed.length);
     expect(
-      preview.any((food) => food.$1 == 'Dữ liệu riêng của gia đình cũ'),
+      preview.any((food) => food.name == 'Dữ liệu riêng của gia đình cũ'),
       isFalse,
     );
   });
 
   testWidgets('supports add-to-shopping flow and 320dp layout', (tester) async {
     setTestViewport(tester, const Size(320, 568));
+    final originalCheckedIds = {shoppingItems[4].id, shoppingItems[6].id};
+    final firstItemId = shoppingItems.first.id;
 
     await tester.pumpWidget(const VineatApp());
     await tester.pumpAndSettle();
@@ -323,11 +455,23 @@ void main() {
     await tester.tap(find.text('Thêm món'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, 'Bắp cải');
+    await tester.enterText(find.byType(TextField).at(1), '0');
+    await tester.ensureVisible(find.text('Thêm vào danh sách'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Thêm vào danh sách'));
+    await tester.pumpAndSettle();
+    expect(find.text('Nhập số lượng lớn hơn 0'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).at(1), '2.5');
     await tester.ensureVisible(find.text('Thêm vào danh sách'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Thêm vào danh sách'));
     await tester.pumpAndSettle();
     expect(find.text('Bắp cải'), findsOneWidget);
+    expect(
+      shoppingItems.singleWhere((item) => item.name == 'Bắp cải').quantity,
+      2.5,
+    );
 
     await tester.tap(find.text('Thêm món'));
     await tester.pumpAndSettle();
@@ -338,6 +482,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Bắp cải đã có trong danh sách'), findsOneWidget);
     expect(find.text('Bắp cải'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+    expect(find.text('Bắp cải đã có trong danh sách'), findsNothing);
+
+    await tester.tap(find.byType(Checkbox).first);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byIcon(Icons.delete_outline).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.delete_outline).first);
+    await tester.pumpAndSettle();
+    expect(shoppingItems.any((item) => item.id == firstItemId), isFalse);
+    expect(shoppingChecked, containsAll(originalCheckedIds));
 
     await tester.tap(find.text('Báo cáo'));
     await tester.pumpAndSettle();
@@ -420,7 +576,7 @@ void main() {
     await tester.tap(find.byType(Checkbox).first);
     await tester.pumpAndSettle();
 
-    expect(inventoryFoods.any((food) => food.$1 == 'Thịt gà ta'), isTrue);
+    expect(inventoryFoods.any((food) => food.name == 'Thịt gà ta'), isTrue);
     await tester.tap(find.text('Trang chủ'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
@@ -443,7 +599,7 @@ void main() {
     await tester.tap(addMissingIngredients);
     await tester.pumpAndSettle();
 
-    expect(shoppingItems.any((item) => item.$1 == 'Mì'), isTrue);
+    expect(shoppingItems.any((item) => item.name == 'Mì'), isTrue);
     expect(tester.takeException(), isNull);
   });
 

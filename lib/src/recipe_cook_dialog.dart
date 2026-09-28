@@ -4,7 +4,7 @@ import 'inventory_models.dart';
 
 class RecipeCookDialog extends StatefulWidget {
   const RecipeCookDialog({super.key, required this.ingredients});
-  final List<(String, FoodSummary)> ingredients;
+  final List<FoodSummary> ingredients;
 
   @override
   State<RecipeCookDialog> createState() => _RecipeCookDialogState();
@@ -15,21 +15,18 @@ class _RecipeCookDialogState extends State<RecipeCookDialog> {
   final _selected = <String, bool>{};
   String? _error;
 
-  List<(String, FoodSummary)> get _stockIngredients {
+  List<FoodSummary> get _stockIngredients {
     final seen = <String>{};
-    return widget.ingredients.where((ingredient) {
-      final food = ingredient.$2;
-      return seen.add(food.$1.toLowerCase());
-    }).toList();
+    return widget.ingredients.where((food) => seen.add(food.id)).toList();
   }
 
   @override
   void initState() {
     super.initState();
     for (final ingredient in _stockIngredients) {
-      final food = ingredient.$2;
-      _controllers[food.$1] = TextEditingController(text: '1');
-      _selected[food.$1] = false;
+      final food = ingredient;
+      _controllers[food.id] = TextEditingController(text: '1');
+      _selected[food.id] = false;
     }
   }
 
@@ -42,12 +39,12 @@ class _RecipeCookDialogState extends State<RecipeCookDialog> {
   }
 
   void _save() {
-    final uses = <(FoodSummary, double)>[];
+    final uses = <InventoryUsage>[];
     for (final ingredient in _stockIngredients) {
-      final food = ingredient.$2;
-      if (_selected[food.$1] != true) continue;
+      final food = ingredient;
+      if (_selected[food.id] != true) continue;
       final amount = double.tryParse(
-        _controllers[food.$1]!.text.trim().replaceAll(',', '.'),
+        _controllers[food.id]!.text.trim().replaceAll(',', '.'),
       );
       final stock = InventoryItemRecord.fromSummary(food).quantity;
       if (amount == null || amount <= 0 || amount > stock) {
@@ -57,7 +54,7 @@ class _RecipeCookDialogState extends State<RecipeCookDialog> {
         );
         return;
       }
-      uses.add((food, amount));
+      uses.add(InventoryUsage(food: food, quantity: amount));
     }
     Navigator.pop(context, uses);
   }
@@ -82,23 +79,23 @@ class _RecipeCookDialogState extends State<RecipeCookDialog> {
                 'Không tìm thấy nguyên liệu khớp trong tủ lạnh; chỉ ghi nhận tên món đã nấu.',
               ),
             ..._stockIngredients.map((ingredient) {
-              final food = ingredient.$2;
+              final food = ingredient;
               final stock = InventoryItemRecord.fromSummary(food);
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
                   children: [
                     Checkbox(
-                      value: _selected[food.$1],
+                      value: _selected[food.id],
                       onChanged: (value) =>
-                          setState(() => _selected[food.$1] = value ?? false),
+                          setState(() => _selected[food.id] = value ?? false),
                     ),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            food.$1,
+                            food.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontWeight: FontWeight.w700),
@@ -117,8 +114,8 @@ class _RecipeCookDialogState extends State<RecipeCookDialog> {
                     SizedBox(
                       width: 76,
                       child: TextField(
-                        controller: _controllers[food.$1],
-                        enabled: _selected[food.$1] == true,
+                        controller: _controllers[food.id],
+                        enabled: _selected[food.id] == true,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
