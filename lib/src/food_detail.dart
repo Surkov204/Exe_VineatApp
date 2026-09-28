@@ -7,6 +7,8 @@ const _green = Color(0xFF079669);
 const _ink = Color(0xFF253043);
 const _muted = Color(0xFF98A2B3);
 
+enum FoodRemovalResult { deleted, consumed, discarded }
+
 class FoodDetailData {
   const FoodDetailData({
     required this.name,
@@ -146,7 +148,41 @@ class _FoodDetailScreenState extends State<FoodDetailScreen> {
         ],
       ),
     );
-    if (confirmed == true && mounted) Navigator.pop(context, true);
+    if (confirmed == true && mounted) {
+      Navigator.pop(context, FoodRemovalResult.deleted);
+    }
+  }
+
+  Future<void> _markUsed({required bool discarded}) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          discarded ? 'Ghi nhận đã bỏ thực phẩm?' : 'Ghi nhận đã sử dụng?',
+        ),
+        content: Text(
+          discarded
+              ? 'Thông tin này sẽ được tính vào báo cáo lãng phí.'
+              : 'ViNeat sẽ ghi nhận món này đã được sử dụng trong báo cáo.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Xác nhận'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      Navigator.pop(
+        context,
+        discarded ? FoodRemovalResult.discarded : FoodRemovalResult.consumed,
+      );
+    }
   }
 
   @override
@@ -288,20 +324,29 @@ class _FoodDetailScreenState extends State<FoodDetailScreen> {
                     const SizedBox(height: 20),
                     Row(
                       children: [
-                        const Text(
-                          'Thời gian sử dụng còn lại',
-                          style: TextStyle(color: Color(0xFF667085)),
+                        const Expanded(
+                          child: Text(
+                            'Thời gian sử dụng còn lại',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: Color(0xFF667085)),
+                          ),
                         ),
-                        const Spacer(),
-                        Text(
-                          expired ? 'Đã hết hạn' : food.status,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: expired
-                                ? Colors.redAccent
-                                : warning
-                                ? Colors.orange
-                                : _green,
+                        const SizedBox(width: 12),
+                        Flexible(
+                          child: Text(
+                            expired ? 'Đã hết hạn' : food.status,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.end,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              color: expired
+                                  ? Colors.redAccent
+                                  : warning
+                                  ? Colors.orange
+                                  : _green,
+                            ),
                           ),
                         ),
                       ],
@@ -384,6 +429,25 @@ class _FoodDetailScreenState extends State<FoodDetailScreen> {
             padding: const EdgeInsets.symmetric(vertical: 16),
           ),
         ),
+        const SizedBox(height: 10),
+        FilledButton.tonalIcon(
+          onPressed: () => _markUsed(discarded: false),
+          icon: const Icon(Icons.restaurant),
+          label: const Text('Đã sử dụng hết'),
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 15),
+            foregroundColor: _green,
+          ),
+        ),
+        if (expired) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => _markUsed(discarded: true),
+            icon: const Icon(Icons.delete_sweep_outlined),
+            label: const Text('Đã bỏ vì hết hạn'),
+            style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent),
+          ),
+        ],
         const SizedBox(height: 10),
         OutlinedButton.icon(
           onPressed: _delete,

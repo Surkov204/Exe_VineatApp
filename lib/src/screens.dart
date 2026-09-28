@@ -5,14 +5,18 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'app_services.dart';
 import 'food_detail.dart';
 import 'food_image.dart';
 import 'global_search.dart';
+import 'household_data_repository.dart';
 import 'inventory_store.dart';
 import 'profile_screen.dart';
 import 'receipt_models.dart';
 import 'receipt_ocr_service.dart';
 import 'recipe_detail.dart';
+
+export 'reports_screen.dart' show ReportsScreen;
 
 const _green = Color(0xFF079669);
 const _ink = Color(0xFF253043);
@@ -996,6 +1000,7 @@ class _FoodTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () async {
+          final original = (name, detail, status, image);
           final result = await Navigator.of(context).push<Object?>(
             MaterialPageRoute(
               builder: (_) => FoodDetailScreen(
@@ -1009,7 +1014,15 @@ class _FoodTile extends StatelessWidget {
             ),
           );
           if (result is FoodDetailData) onUpdated(result);
-          if (result == true) onDeleted();
+          if (result == FoodRemovalResult.deleted) onDeleted();
+          if (result == FoodRemovalResult.consumed) {
+            markFoodConsumed(original);
+            onDeleted();
+          }
+          if (result == FoodRemovalResult.discarded) {
+            markFoodConsumed(original, discarded: true);
+            onDeleted();
+          }
         },
         child: Padding(
           padding: const EdgeInsets.all(9),
@@ -1163,6 +1176,7 @@ class _ScanScreenState extends State<ScanScreen>
   int stage = 0;
   int scanStep = 0;
   XFile? receiptImage;
+  ReceiptScanResult? scanResult;
   final imagePicker = ImagePicker();
   final ocrService = ReceiptOcrService();
   bool importing = false;
@@ -1182,6 +1196,7 @@ class _ScanScreenState extends State<ScanScreen>
     );
     if (template == null || !mounted) return;
     setState(() {
+      scanResult = null;
       results
         ..clear()
         ..addAll(template.map(_lineFromLegacy));
@@ -1200,6 +1215,7 @@ class _ScanScreenState extends State<ScanScreen>
     );
     if (items == null || items.isEmpty || !mounted) return;
     setState(() {
+      scanResult = null;
       results
         ..clear()
         ..addAll(items.map(_lineFromLegacy));
@@ -1238,7 +1254,7 @@ class _ScanScreenState extends State<ScanScreen>
     }
   }
 
-  void _addSelectedToFridge() {
+  Future<void> _addSelectedToFridge() async {
     if (importing) return;
     setState(() => importing = true);
     final foods = selected.map((index) {
@@ -1258,7 +1274,43 @@ class _ScanScreenState extends State<ScanScreen>
         inventoryFoods.length % 10,
       );
     });
-    addFoodsToInventory(foods);
+    try {
+      if (AppServices.configured &&
+          HouseholdService.instance.active.value != null &&
+          scanResult != null) {
+        HouseholdDataRepository.instance.syncStatus.value =
+            'Đang lưu hóa đơn và thực phẩm…';
+        await HouseholdDataRepository.instance.importReceipt(
+          lines: results,
+          selectedIndexes: selected,
+          rawText: scanResult!.rawText,
+          storeName: scanResult!.storeName,
+          purchasedAt: scanResult!.purchasedAt,
+          totalVnd: scanResult!.totalVnd,
+          localImagePath: receiptImage?.path,
+        );
+        final snapshot = await HouseholdDataRepository.instance
+            .loadActiveHousehold();
+        replaceInventoryFromRemote(
+          records: snapshot.inventory,
+          events: snapshot.events,
+        );
+        HouseholdDataRepository.instance.syncStatus.value = null;
+      } else {
+        addFoodsToInventory(foods);
+      }
+    } catch (_) {
+      HouseholdDataRepository.instance.syncStatus.value =
+          'Hóa đơn chưa được lưu trên máy chủ. Thông tin đang giữ ở bước rà soát; thử lưu lại khi có mạng.';
+      if (mounted) {
+        setState(() => importing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Chưa lưu được hóa đơn. Hãy thử lại.')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Đã thêm ${selected.length} thực phẩm vào tủ lạnh'),
@@ -1268,6 +1320,7 @@ class _ScanScreenState extends State<ScanScreen>
       importing = false;
       stage = 0;
       receiptImage = null;
+      scanResult = null;
     });
   }
 
@@ -1339,6 +1392,7 @@ class _ScanScreenState extends State<ScanScreen>
         ..addAll(List.generate(results.length, (index) => index));
       rotation.stop();
       setState(() {
+        scanResult = scan;
         stage = 2;
         scanError = null;
       });
@@ -2549,167 +2603,170 @@ class _RecipesScreenState extends State<RecipesScreen> {
   ];
 
   @override
-  Widget build(BuildContext context) {
-    final filteredRecipes = recipes.where((recipe) {
-      final detail = RecipeDetailData.fromSummary(
-        name: recipe.$1,
-        time: recipe.$2,
-        level: recipe.$3,
-        match: recipe.$4,
-        image: recipe.$5,
-        ingredientsText: recipe.$6,
-      );
-      final matchesSearch =
-          query.trim().isEmpty ||
-          detail.name.toLowerCase().contains(query.trim().toLowerCase()) ||
-          detail.ingredients.any(
-            (item) =>
-                item.name.toLowerCase().contains(query.trim().toLowerCase()),
-          );
-      final matchesCategory = switch (category) {
-        1 => recipe.$5 == 11 || recipe.$5 == 15 || recipe.$5 == 4,
-        2 => recipe.$5 == 10 || recipe.$5 == 13 || recipe.$5 == 2,
-        3 => recipe.$5 == 12 || recipe.$5 == 14 || recipe.$5 == 4,
-        _ => true,
-      };
-      return matchesSearch && matchesCategory;
-    }).toList();
-    return Column(
-      children: [
-        const BrandHeader(title: 'Gợi ý món ăn'),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.all(14),
-            children: [
-              TextField(
-                onChanged: (value) => setState(() => query = value),
-                decoration: InputDecoration(
-                  hintText: 'Tìm món ăn...',
-                  prefixIcon: const Icon(Icons.search, size: 19),
-                  filled: true,
-                  fillColor: const Color(0xFFF1F3F5),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.all(13),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE7FAF3),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Có ${recipes.length} món phù hợp',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: _ink,
-                      ),
+  Widget build(BuildContext context) => ValueListenableBuilder<int>(
+    valueListenable: inventoryRevision,
+    builder: (context, _, _) {
+      final filteredRecipes = recipes.where((recipe) {
+        final detail = RecipeDetailData.fromSummary(
+          name: recipe.$1,
+          time: recipe.$2,
+          level: recipe.$3,
+          match: recipe.$4,
+          image: recipe.$5,
+          ingredientsText: recipe.$6,
+        );
+        final matchesSearch =
+            query.trim().isEmpty ||
+            detail.name.toLowerCase().contains(query.trim().toLowerCase()) ||
+            detail.ingredients.any(
+              (item) =>
+                  item.name.toLowerCase().contains(query.trim().toLowerCase()),
+            );
+        final matchesCategory = switch (category) {
+          1 => recipe.$5 == 11 || recipe.$5 == 15 || recipe.$5 == 4,
+          2 => recipe.$5 == 10 || recipe.$5 == 13 || recipe.$5 == 2,
+          3 => recipe.$5 == 12 || recipe.$5 == 14 || recipe.$5 == 4,
+          _ => true,
+        };
+        return matchesSearch && matchesCategory;
+      }).toList();
+      return Column(
+        children: [
+          const BrandHeader(title: 'Gợi ý món ăn'),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(14),
+              children: [
+                TextField(
+                  onChanged: (value) => setState(() => query = value),
+                  decoration: InputDecoration(
+                    hintText: 'Tìm món ăn...',
+                    prefixIcon: const Icon(Icons.search, size: 19),
+                    filled: true,
+                    fillColor: const Color(0xFFF1F3F5),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide.none,
                     ),
-                    SizedBox(height: 3),
-                    Text(
-                      'Ưu tiên món có từ 50% nguyên liệu trong tủ',
-                      style: TextStyle(fontSize: 10, color: _muted),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                height: 38,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: ['Tất cả', 'Mùa hè', 'Bữa sáng', 'Bữa tối']
-                      .asMap()
-                      .entries
-                      .map(
-                        (entry) => Padding(
-                          padding: const EdgeInsets.only(right: 7),
-                          child: ChoiceChip(
-                            label: Text(entry.value),
-                            selected: category == entry.key,
-                            onSelected: (_) =>
-                                setState(() => category = entry.key),
-                            selectedColor: _green,
-                            labelStyle: TextStyle(
-                              fontSize: 11,
-                              color: category == entry.key
-                                  ? Colors.white
-                                  : _ink,
-                            ),
-                            showCheckmark: false,
-                          ),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              if (filteredRecipes.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 40),
-                  child: Center(
-                    child: Text(
-                      'Không tìm thấy món phù hợp',
-                      style: TextStyle(color: _muted),
-                    ),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 10),
                   ),
                 ),
-              ...filteredRecipes.map(
-                (r) => _RecipeCard(
-                  name: r.$1,
-                  time: r.$2,
-                  level: r.$3,
-                  match: r.$4,
-                  image: r.$5,
-                  ingredients: r.$6,
-                ),
-              ),
-              Card(
-                color: const Color(0xFFFFFBEB),
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Row(
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(13),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE7FAF3),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Icon(Icons.lightbulb_outline, color: Colors.amber),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Mẹo nấu ăn thông minh',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                color: _ink,
-                              ),
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              'Ưu tiên món dùng nguyên liệu sắp hết hạn để giảm lãng phí thực phẩm.',
-                              style: TextStyle(fontSize: 11, color: _muted),
-                            ),
-                          ],
+                    children: [
+                      Text(
+                        'Có ${recipes.length} món phù hợp',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: _ink,
                         ),
+                      ),
+                      SizedBox(height: 3),
+                      Text(
+                        'Ưu tiên món có từ 50% nguyên liệu trong tủ',
+                        style: TextStyle(fontSize: 10, color: _muted),
                       ),
                     ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 40),
-            ],
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 38,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: ['Tất cả', 'Mùa hè', 'Bữa sáng', 'Bữa tối']
+                        .asMap()
+                        .entries
+                        .map(
+                          (entry) => Padding(
+                            padding: const EdgeInsets.only(right: 7),
+                            child: ChoiceChip(
+                              label: Text(entry.value),
+                              selected: category == entry.key,
+                              onSelected: (_) =>
+                                  setState(() => category = entry.key),
+                              selectedColor: _green,
+                              labelStyle: TextStyle(
+                                fontSize: 11,
+                                color: category == entry.key
+                                    ? Colors.white
+                                    : _ink,
+                              ),
+                              showCheckmark: false,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (filteredRecipes.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 40),
+                    child: Center(
+                      child: Text(
+                        'Không tìm thấy món phù hợp',
+                        style: TextStyle(color: _muted),
+                      ),
+                    ),
+                  ),
+                ...filteredRecipes.map(
+                  (r) => _RecipeCard(
+                    name: r.$1,
+                    time: r.$2,
+                    level: r.$3,
+                    match: r.$4,
+                    image: r.$5,
+                    ingredients: r.$6,
+                  ),
+                ),
+                Card(
+                  color: const Color(0xFFFFFBEB),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Icon(Icons.lightbulb_outline, color: Colors.amber),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Mẹo nấu ăn thông minh',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  color: _ink,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'Ưu tiên món dùng nguyên liệu sắp hết hạn để giảm lãng phí thực phẩm.',
+                                style: TextStyle(fontSize: 11, color: _muted),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 40),
+              ],
+            ),
           ),
-        ),
-      ],
-    );
-  }
+        ],
+      );
+    },
+  );
 }
 
 class _RecipeCard extends StatelessWidget {
@@ -2724,83 +2781,82 @@ class _RecipeCard extends StatelessWidget {
   final String name, time, level, match, ingredients;
   final int image;
   @override
-  Widget build(BuildContext context) => Card(
-    margin: const EdgeInsets.only(bottom: 12),
-    clipBehavior: Clip.antiAlias,
-    child: InkWell(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => RecipeDetailScreen(
-            recipe: RecipeDetailData.fromSummary(
-              name: name,
-              time: time,
-              level: level,
-              match: match,
-              image: image,
-              ingredientsText: ingredients,
-            ),
-          ),
+  Widget build(BuildContext context) {
+    final recipe = RecipeDetailData.fromSummary(
+      name: name,
+      time: time,
+      level: level,
+      match: match,
+      image: image,
+      ingredientsText: ingredients,
+    );
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => RecipeDetailScreen(recipe: recipe)),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Stack(
-            children: [
-              Image.asset(
-                '$_assetRoot${image == 0 ? 'search-image' : 'search-image($image)'}',
-                height: 158,
-                width: double.infinity,
-                fit: BoxFit.cover,
-              ),
-              Positioned(
-                top: 9,
-                left: 9,
-                child: _TinyBadge('$time  ·  $level', Colors.white, _ink),
-              ),
-              Positioned(
-                top: 9,
-                right: 9,
-                child: _TinyBadge(match, _green, Colors.white),
-              ),
-            ],
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Stack(
               children: [
-                Text(
-                  name,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15,
-                    color: _ink,
-                  ),
+                Image.asset(
+                  '$_assetRoot${image == 0 ? 'search-image' : 'search-image($image)'}',
+                  height: 158,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
                 ),
-                const SizedBox(height: 5),
-                const Text(
-                  'Món ăn gợi ý từ những nguyên liệu đang có trong tủ lạnh của bạn.',
-                  style: TextStyle(fontSize: 10, color: _muted),
+                Positioned(
+                  top: 9,
+                  left: 9,
+                  child: _TinyBadge('$time  ·  $level', Colors.white, _ink),
                 ),
-                const SizedBox(height: 9),
-                Wrap(
-                  spacing: 5,
-                  runSpacing: 5,
-                  children: ingredients
-                      .split(' · ')
-                      .map(
-                        (x) => _TinyBadge(x, const Color(0xFFE8FBF4), _green),
-                      )
-                      .toList(),
+                Positioned(
+                  top: 9,
+                  right: 9,
+                  child: _TinyBadge(recipe.match, _green, Colors.white),
                 ),
               ],
             ),
-          ),
-        ],
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                      color: _ink,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  const Text(
+                    'Món ăn gợi ý từ những nguyên liệu đang có trong tủ lạnh của bạn.',
+                    style: TextStyle(fontSize: 10, color: _muted),
+                  ),
+                  const SizedBox(height: 9),
+                  Wrap(
+                    spacing: 5,
+                    runSpacing: 5,
+                    children: ingredients
+                        .split(' · ')
+                        .map(
+                          (x) => _TinyBadge(x, const Color(0xFFE8FBF4), _green),
+                        )
+                        .toList(),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _TinyBadge extends StatelessWidget {
@@ -2828,65 +2884,72 @@ class ShoppingScreen extends StatefulWidget {
 }
 
 class _ShoppingScreenState extends State<ShoppingScreen> {
-  final checked = <int>{4, 6};
+  final checked = shoppingChecked;
   int selectedCategory = 0;
   int _shoppingMutationRevision = 0;
-  final items = <ShoppingSummary>[
-    (
-      'Thịt gà ta',
-      '1 kg · Mua con gà ta nguyên con, làm sẵn',
-      'Cần mua gấp',
-      'Mẹ',
-      'Thịt cá',
-    ),
-    (
-      'Dứa',
-      '1 quả · Dứa chín vàng, để nấu canh chua',
-      'Bình thường',
-      'Mẹ',
-      'Rau củ',
-    ),
-    (
-      'Bánh phở',
-      '2 gói · Bánh phở tươi loại dày',
-      'Cần mua gấp',
-      'Bố',
-      'Đồ khô',
-    ),
-    ('Tỏi', '200 gram · Tỏi Lý Sơn', 'Bình thường', 'Bố', 'Rau củ'),
-    (
-      'Sữa chua Vinamilk',
-      '1 lốc · Sữa chua có đường',
-      'Có cũng được',
-      'Con (Minh)',
-      'Khác',
-    ),
-    (
-      'Đậu phộng',
-      '200 gram · Đậu phộng rang sẵn',
-      'Có cũng được',
-      'Mẹ',
-      'Đồ khô',
-    ),
-    ('Dầu hào', '1 chai · Dầu hào Maggi', 'Bình thường', 'Bố', 'Đồ khô'),
-    ('Cần tây', '2 cây · Cần tây tươi, lá xanh', 'Bình thường', 'Mẹ', 'Rau củ'),
-    (
-      'Cá hồi phi lê',
-      '2 miếng · Cá hồi Na Uy, mua ở siêu thị',
-      'Cần mua gấp',
-      'Bố',
-      'Thịt cá',
-    ),
-  ];
+  final items = shoppingItems;
 
   @override
   void initState() {
     super.initState();
+    shoppingRevision.addListener(_onExternalShoppingChange);
     unawaited(_restoreShopping());
+  }
+
+  @override
+  void dispose() {
+    shoppingRevision.removeListener(_onExternalShoppingChange);
+    super.dispose();
+  }
+
+  void _onExternalShoppingChange() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _restoreShopping() async {
     final revisionAtStart = _shoppingMutationRevision;
+    if (AppServices.configured &&
+        HouseholdService.instance.active.value != null) {
+      final householdId = HouseholdService.instance.active.value!.id;
+      try {
+        final remoteItems = await HouseholdDataRepository.instance
+            .loadShoppingItems();
+        if (!mounted ||
+            revisionAtStart != _shoppingMutationRevision ||
+            HouseholdService.instance.active.value?.id != householdId) {
+          return;
+        }
+        setState(() {
+          items
+            ..clear()
+            ..addAll(remoteItems.map((entry) => entry.item));
+          checked
+            ..clear()
+            ..addAll(
+              remoteItems
+                  .asMap()
+                  .entries
+                  .where((entry) => entry.value.checked)
+                  .map((entry) => entry.key),
+            );
+        });
+        shoppingRevision.value++;
+      } catch (_) {
+        if (!mounted ||
+            revisionAtStart != _shoppingMutationRevision ||
+            HouseholdService.instance.active.value?.id != householdId) {
+          return;
+        }
+        setState(() {
+          items.clear();
+          checked.clear();
+        });
+        shoppingRevision.value++;
+        HouseholdDataRepository.instance.syncStatus.value =
+            'Chưa tải được danh sách đi chợ. Hãy kiểm tra kết nối rồi mở lại tab.';
+      }
+      return;
+    }
     final snapshot = await restoreShopping();
     if (snapshot == null ||
         !mounted ||
@@ -2901,6 +2964,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
         ..clear()
         ..addAll(snapshot.checked.where((index) => index < items.length));
     });
+    shoppingRevision.value++;
   }
 
   void _persistShopping() {
@@ -2928,6 +2992,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
 
   void _deleteShoppingItem(int index) {
     final removed = items[index];
+    final wasChecked = checked.contains(index);
     setState(() {
       items.removeAt(index);
       final shiftedChecked = checked
@@ -2955,7 +3020,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                 ..clear()
                 ..addAll(shiftedChecked);
               items.insert(index, removed);
-              checked.add(index);
+              if (wasChecked) checked.add(index);
             });
             _shoppingMutationRevision++;
             _persistShopping();
@@ -3067,13 +3132,27 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                           item: e.value,
                           checked: checked.contains(e.key),
                           onChanged: () {
-                            setState(
-                              () => checked.contains(e.key)
-                                  ? checked.remove(e.key)
-                                  : checked.add(e.key),
-                            );
+                            final purchased = !checked.contains(e.key);
+                            setState(() {
+                              if (purchased) {
+                                checked.add(e.key);
+                              } else {
+                                checked.remove(e.key);
+                              }
+                            });
+                            setShoppingPurchased(e.value, purchased);
                             _shoppingMutationRevision++;
                             _persistShopping();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  purchased
+                                      ? 'Đã chuyển ${e.value.$1} vào tủ lạnh'
+                                      : 'Đã bỏ trạng thái đã mua',
+                                ),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
                           },
                           onDelete: () => _deleteShoppingItem(e.key),
                         ),
@@ -3534,8 +3613,10 @@ class _FormLabel extends StatelessWidget {
   );
 }
 
-class ReportsScreen extends StatelessWidget {
-  const ReportsScreen({super.key});
+// ignore: unused_element
+class _LegacyReportsScreen extends StatelessWidget {
+  // ignore: unused_element_parameter
+  const _LegacyReportsScreen({super.key});
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(

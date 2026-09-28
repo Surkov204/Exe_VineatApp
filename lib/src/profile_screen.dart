@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'app_tutorial.dart';
+import 'app_services.dart';
+import 'family_settings.dart';
 import 'global_search.dart';
 import 'inventory_store.dart';
 
@@ -288,90 +290,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
         const SizedBox(height: 14),
-        _Panel(
-          title: 'Gia đình',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Mã tham gia gia đình',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: _ink,
-                          ),
-                        ),
-                        Text(
-                          'Bản demo hiện chưa đồng bộ gia đình',
-                          style: TextStyle(fontSize: 10, color: _muted),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 13,
-                      vertical: 11,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF3F4F6),
-                      borderRadius: BorderRadius.circular(9),
-                    ),
-                    child: Text(
-                      'Chưa kết nối',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.5,
-                        color: _ink,
-                      ),
-                    ),
-                  ),
-                  IconButton.filledTonal(
-                    tooltip: 'Vì sao chưa có mã gia đình?',
-                    onPressed: () => showDialog<void>(
-                      context: context,
-                      builder: (dialogContext) => AlertDialog(
-                        title: const Text('Đồng bộ gia đình chưa bật'),
-                        content: const Text(
-                          'Mã mời thật cần được tạo và xác thực bởi backend. Bản demo đang lưu dữ liệu trên thiết bị này, vì vậy không hiển thị mã giả.',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(dialogContext),
-                            child: const Text('Đã hiểu'),
-                          ),
-                        ],
-                      ),
-                    ),
-                    icon: const Icon(Icons.info_outline),
-                    style: IconButton.styleFrom(
-                      backgroundColor: const Color(0xFFF3F4F6),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              InkWell(
-                onTap: () => _message(
-                  'Quản lý thành viên sẽ hoạt động sau khi cấu hình Supabase.',
-                ),
-                child: const Text(
-                  'Quản lý thành viên  ›',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: _green,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+        _Panel(title: 'Gia đình', child: const FamilySettings()),
         const SizedBox(height: 14),
         _Panel(
           title: 'Trợ giúp',
@@ -414,6 +333,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
             foregroundColor: _green,
           ),
         ),
+        if (AppServices.configured) ...[
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: () async {
+              try {
+                await AppServices.client.auth.signOut();
+              } catch (_) {
+                if (mounted) _message('Chưa đăng xuất được. Vui lòng thử lại.');
+              }
+            },
+            icon: const Icon(Icons.logout),
+            label: const Text('Đăng xuất'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              foregroundColor: Colors.redAccent,
+            ),
+          ),
+        ],
         const SizedBox(height: 18),
         const Center(
           child: Padding(
