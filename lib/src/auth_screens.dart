@@ -58,6 +58,7 @@ class _AuthSplash extends StatelessWidget {
                   expiringCount: 1,
                   height: 190,
                   preview: true,
+                  active: false,
                 ),
                 const SizedBox(height: 24),
                 const Text(
@@ -248,6 +249,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   expiringCount: 1,
                   height: 210,
                   preview: true,
+                  active: false,
                 ),
                 const SizedBox(height: 28),
                 const Text(

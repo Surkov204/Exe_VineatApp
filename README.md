@@ -71,15 +71,22 @@ trong báo cáo chỉ xuất hiện sau thao tác xác nhận, không giả làm
 - Bố cục mobile dùng thanh tab cố định; màn hình rộng chuyển qua navigation rail.
   Các trang giữ trạng thái khi đổi tab, nội dung cuộn trong vùng riêng và chuyển tab
   bằng hiệu ứng ngắn, tự tắt khi thiết bị bật giảm chuyển động.
-- Mỗi trang có thẻ hướng dẫn gọn ở lần đầu truy cập; tour 5 bước có thể mở lại từ
-  Hồ sơ → Trợ giúp. Tiến độ từng trang lưu cục bộ và đồng bộ khi tài khoản online.
+- Lần đầu mở từng trang có coachmark làm nổi bật thao tác thật; có thể đi tiếp,
+  bỏ qua và mở lại tour 5 bước từ Hồ sơ → Trợ giúp. Tiến độ lưu cục bộ và đồng bộ
+  khi tài khoản online.
 - Danh mục món ăn/công thức hiện là catalog cục bộ; phần gợi ý kiểm tra nguyên liệu
-  từ tủ lạnh và nút thêm nguyên liệu thiếu vào danh sách đi chợ.
+  từ tủ lạnh, nút thêm nguyên liệu thiếu vào danh sách đi chợ; ảnh món được đóng gói
+  dạng WebP riêng theo món để không phụ thuộc mạng.
+- Khi project Supabase bật Realtime và đã áp dụng migration, thay đổi tủ lạnh, đi chợ
+  và hoạt động gia đình được làm mới tự động trên các thiết bị đang mở cùng gia đình.
 - OCR xử lý ảnh trên thiết bị. Các dòng đã xác nhận có thể nhập vào kho local hoặc
   household đã đăng nhập; chưa có job OCR nền hay quản trị lịch sử hóa đơn đầy đủ.
-- Chưa có file GLB gốc được cấp phép trong source. Màn đăng nhập và Trang chủ dùng
-  hình tủ lạnh phối cảnh dựng native bằng Flutter làm fallback nhẹ, không tải WebView
-  hay giả nhận đó là mô hình GLB. Cần cung cấp GLB nếu muốn thay bằng model 3D thật.
+- Trang chủ có tủ lạnh GLB tương tác xoay/thu phóng, kèm ảnh dựng native làm poster
+  và fallback nếu model không tải kịp; viewer chỉ chạy khi tab đang hiển thị. Model
+  procedural có script tái tạo tại `tooling/build_fridge_model.py`. `model_viewer_plus`
+  dùng WebView trên Android, vì vậy Android yêu cầu minSdk 24 và cấu hình mạng chỉ
+  cho phép HTTP nội bộ đến localhost/127.0.0.1 của viewer; cần đo hiệu năng trên máy
+  Android thật trước khi chốt trải nghiệm 3D cho thiết bị cấu hình thấp.
 - File Proposal và backend riêng không có trong workspace hiện tại. Schema trong
   `supabase/migrations/` được dựng theo luồng hiện có của ứng dụng và cần đối chiếu
   Proposal/backend gốc trước khi coi là schema production.

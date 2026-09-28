@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'app_tutorial.dart';
 import 'inventory_store.dart';
 import 'screens.dart' show BrandHeader;
 
@@ -61,11 +62,14 @@ class ReportsScreen extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                _SummaryCard(
-                  title: 'Giá trị thực phẩm đang theo dõi',
-                  value: _vnd(totalValue),
-                  footnote: '${inventoryFoods.length} món trong tủ lạnh',
-                  icon: Icons.inventory_2_outlined,
+                KeyedSubtree(
+                  key: tutorialTargetKeys[4],
+                  child: _SummaryCard(
+                    title: 'Giá trị thực phẩm đang theo dõi',
+                    value: _vnd(totalValue),
+                    footnote: '${inventoryFoods.length} món trong tủ lạnh',
+                    icon: Icons.inventory_2_outlined,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 LayoutBuilder(

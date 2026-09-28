@@ -129,7 +129,7 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
       level: 'Dễ',
       match: '90% có sẵn',
       image: 15,
-      ingredientsText: 'Cà chua · Dưa leo · Hành lá',
+      ingredientsText: 'Cá thu · Dưa leo · Hành lá',
     ),
     RecipeDetailData.fromSummary(
       name: 'Đậu hũ sốt cà chua',

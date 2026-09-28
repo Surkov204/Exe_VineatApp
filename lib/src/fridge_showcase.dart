@@ -1,7 +1,12 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:io';
 
-/// A lightweight, native 3D-style fridge visual. It deliberately avoids a
-/// WebView/model runtime so the first screen remains fast on low-end phones.
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:model_viewer_plus/model_viewer_plus.dart';
+
+/// Interactive GLB showcase with a lightweight Flutter fallback. The viewer is
+/// created only on visible mobile/web surfaces and is suspended off-tab.
 class SmartFridgeShowcase extends StatelessWidget {
   const SmartFridgeShowcase({
     super.key,
@@ -10,6 +15,7 @@ class SmartFridgeShowcase extends StatelessWidget {
     this.onInventoryTap,
     this.onExpiringTap,
     this.preview = false,
+    this.active = true,
     this.height = 168,
   });
 
@@ -18,6 +24,7 @@ class SmartFridgeShowcase extends StatelessWidget {
   final VoidCallback? onInventoryTap;
   final VoidCallback? onExpiringTap;
   final bool preview;
+  final bool active;
   final double height;
 
   @override
@@ -43,7 +50,7 @@ class SmartFridgeShowcase extends StatelessWidget {
               top: 0,
               bottom: 0,
               width: constraints.maxWidth * .38,
-              child: const _FridgeRender(),
+              child: _FridgeViewer(active: active),
             ),
             Positioned(
               left: constraints.maxWidth * .39,
@@ -105,6 +112,153 @@ class SmartFridgeShowcase extends StatelessWidget {
       },
     ),
   );
+}
+
+class _FridgeViewer extends StatefulWidget {
+  const _FridgeViewer({required this.active});
+
+  final bool active;
+
+  @override
+  State<_FridgeViewer> createState() => _FridgeViewerState();
+}
+
+class _FridgeViewerState extends State<_FridgeViewer>
+    with WidgetsBindingObserver {
+  Timer? _loadWatchdog;
+  bool _modelLoaded = false;
+  bool _fallback = false;
+  bool _appResumed = true;
+
+  bool get _supportsModelViewerPlatform =>
+      kIsWeb || Platform.isAndroid || Platform.isIOS;
+  bool get _canRender3d =>
+      widget.active &&
+      _appResumed &&
+      !_fallback &&
+      _supportsModelViewerPlatform;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startLoadWatchdog();
+  }
+
+  @override
+  void didUpdateWidget(covariant _FridgeViewer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active == oldWidget.active) return;
+    _loadWatchdog?.cancel();
+    if (widget.active) {
+      _modelLoaded = false;
+      _fallback = false;
+      _startLoadWatchdog();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final resumed = state == AppLifecycleState.resumed;
+    if (_appResumed == resumed) return;
+    _appResumed = resumed;
+    if (resumed && widget.active && !_modelLoaded) _startLoadWatchdog();
+    if (!resumed) _loadWatchdog?.cancel();
+    if (mounted) setState(() {});
+  }
+
+  void _startLoadWatchdog() {
+    _loadWatchdog?.cancel();
+    if (!_canRender3d || _modelLoaded) return;
+    _loadWatchdog = Timer(const Duration(seconds: 12), () {
+      if (mounted && !_modelLoaded) setState(() => _fallback = true);
+    });
+  }
+
+  void _handleModelStatus(dynamic message) {
+    if (!mounted) return;
+    final status = message is String ? message : message.message as String?;
+    if (status == 'loaded') {
+      _loadWatchdog?.cancel();
+      setState(() => _modelLoaded = true);
+    } else if (status == 'error') {
+      _loadWatchdog?.cancel();
+      setState(() => _fallback = true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _loadWatchdog?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_canRender3d) return const _FridgeRender();
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        const _FridgeRender(),
+        ModelViewer(
+          key: const ValueKey('vineat-fridge-model-viewer'),
+          src: 'assets/models/vineat-smart-fridge.glb',
+          alt: 'Mô hình tủ lạnh ViNeat có thể xoay và thu phóng',
+          backgroundColor: Colors.transparent,
+          ar: false,
+          cameraControls: true,
+          disablePan: true,
+          autoRotate: !reduceMotion,
+          autoRotateDelay: 1800,
+          rotationPerSecond: '5deg',
+          cameraOrbit: '22deg 74deg 2.55m',
+          minCameraOrbit: 'auto 40deg 2.1m',
+          maxCameraOrbit: 'auto 140deg 4m',
+          minFieldOfView: '28deg',
+          maxFieldOfView: '58deg',
+          cameraTarget: '0m 0m 0m',
+          interactionPrompt: InteractionPrompt.whenFocused,
+          loading: Loading.lazy,
+          reveal: Reveal.auto,
+          environmentImage: 'neutral',
+          shadowIntensity: 0.55,
+          shadowSoftness: 0.75,
+          debugLogging: false,
+          javascriptChannels: {
+            JavascriptChannel(
+              'ViNeatFridgeStatus',
+              onMessageReceived: _handleModelStatus,
+            ),
+          },
+          relatedJs: '''
+            const fridge = document.querySelector('model-viewer');
+            if (fridge) {
+              fridge.addEventListener('load', () => ViNeatFridgeStatus.postMessage('loaded'), { once: true });
+              fridge.addEventListener('error', () => ViNeatFridgeStatus.postMessage('error'), { once: true });
+            }
+          ''',
+        ),
+        if (!_modelLoaded)
+          Positioned(
+            left: 12,
+            bottom: 12,
+            child: Container(
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.82),
+                shape: BoxShape.circle,
+              ),
+              child: const SizedBox.square(
+                dimension: 12,
+                child: CircularProgressIndicator(strokeWidth: 1.8),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 class _InfoChip extends StatelessWidget {

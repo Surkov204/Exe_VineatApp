@@ -12,6 +12,26 @@ const _ink = Color(0xFF253043);
 const _muted = Color(0xFF98A2B3);
 const _assetRoot = 'design_reference/home/page_files/';
 
+String recipeImageAssetFor(String name, int fallbackIndex) {
+  final normalized = name.toLowerCase();
+  const images = {
+    'mì cay trứng lòng đào': 'spicy-noodles-egg',
+    'canh rau muống nấu tôm': 'water-spinach-shrimp-soup',
+    'bò xào cải thảo': 'beef-cabbage-stir-fry',
+    'bánh mì ốp la trứng gà': 'banh-mi-egg',
+    'cá basa kho tiêu': 'caramel-braised-basa',
+    'salad cá thu dầu mè': 'mackerel-sesame-salad',
+    'đậu hũ sốt cà chua': 'tofu-tomato-sauce',
+    'phở bò tái': 'pho-bo-tai',
+  };
+  for (final entry in images.entries) {
+    if (normalized.contains(entry.key)) {
+      return 'assets/recipes/${entry.value}.webp';
+    }
+  }
+  return '$_assetRoot${fallbackIndex == 0 ? 'search-image' : 'search-image($fallbackIndex)'}';
+}
+
 class RecipeIngredient {
   const RecipeIngredient(
     this.name,
@@ -485,8 +505,9 @@ class _Hero extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         Image.asset(
-          '$_assetRoot${recipe.image == 0 ? 'search-image' : 'search-image(${recipe.image})'}',
+          recipeImageAssetFor(recipe.name, recipe.image),
           fit: BoxFit.cover,
+          cacheWidth: 1200,
         ),
         const DecoratedBox(
           decoration: BoxDecoration(

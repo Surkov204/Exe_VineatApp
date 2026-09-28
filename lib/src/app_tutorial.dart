@@ -3,6 +3,16 @@ import 'package:flutter/material.dart';
 /// Used by the shell to keep the selected tab in sync with the replay tour.
 final tutorialPageRequest = ValueNotifier<int?>(null);
 
+/// Real, visible controls that the first-use coachmark points to.
+final tutorialTargetKeys = List<GlobalKey>.generate(
+  5,
+  (index) => GlobalKey(debugLabel: 'vineat-tutorial-target-$index'),
+  growable: false,
+);
+
+/// The selected page is also used to pause embedded platform views off-screen.
+final activeAppTabIndex = ValueNotifier<int>(-1);
+
 const _tutorialPages = <_TutorialPage>[
   _TutorialPage(
     title: 'Tủ lạnh',
@@ -46,6 +56,256 @@ Future<void> showAppTutorial(
     barrierDismissible: false,
     builder: (_) => _TutorialDialog(onStepChanged: onStepChanged),
   );
+}
+
+class AnchoredTutorialCoachmark extends StatelessWidget {
+  const AnchoredTutorialCoachmark({
+    super.key,
+    required this.targetKey,
+    required this.title,
+    required this.description,
+    required this.step,
+    required this.totalSteps,
+    required this.onNext,
+    required this.onSkip,
+  });
+
+  final GlobalKey targetKey;
+  final String title;
+  final String description;
+  final int step;
+  final int totalSteps;
+  final VoidCallback onNext;
+  final VoidCallback onSkip;
+
+  Rect? _targetRect(BuildContext context) {
+    final targetContext = targetKey.currentContext;
+    final targetObject = targetContext?.findRenderObject();
+    final overlayObject = context.findRenderObject();
+    if (targetObject is! RenderBox ||
+        !targetObject.attached ||
+        !targetObject.hasSize ||
+        overlayObject is! RenderBox ||
+        !overlayObject.attached ||
+        !overlayObject.hasSize) {
+      return null;
+    }
+    final globalTopLeft = targetObject.localToGlobal(Offset.zero);
+    final localTopLeft = overlayObject.globalToLocal(globalTopLeft);
+    return localTopLeft & targetObject.size;
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final target = _targetRect(context);
+      final media = MediaQuery.of(context);
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {},
+            child: CustomPaint(
+              painter: _CoachmarkScrimPainter(target),
+              child: const SizedBox.expand(),
+            ),
+          ),
+          if (target != null)
+            IgnorePointer(
+              child: CustomPaint(
+                painter: _CoachmarkOutlinePainter(target),
+                child: const SizedBox.expand(),
+              ),
+            ),
+          CustomSingleChildLayout(
+            delegate: _CoachmarkPositionDelegate(
+              target: target,
+              safeTop: media.padding.top + 12,
+              safeBottom: media.padding.bottom + 12,
+            ),
+            child: _CoachmarkCard(
+              title: title,
+              description: description,
+              step: step,
+              totalSteps: totalSteps,
+              onNext: onNext,
+              onSkip: onSkip,
+            ),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+class _CoachmarkPositionDelegate extends SingleChildLayoutDelegate {
+  const _CoachmarkPositionDelegate({
+    required this.target,
+    required this.safeTop,
+    required this.safeBottom,
+  });
+
+  final Rect? target;
+  final double safeTop;
+  final double safeBottom;
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
+      BoxConstraints(
+        maxWidth: (constraints.maxWidth - 32).clamp(0, 360),
+        maxHeight: (constraints.maxHeight - safeTop - safeBottom).clamp(0, 420),
+      );
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) {
+    final anchor = target;
+    final left = anchor == null
+        ? (size.width - childSize.width) / 2
+        : (anchor.center.dx - childSize.width / 2).clamp(
+            16,
+            size.width - childSize.width - 16,
+          );
+    final below = anchor == null
+        ? false
+        : anchor.bottom + 12 + childSize.height <= size.height - safeBottom;
+    final top = anchor == null || !below
+        ? ((anchor?.top ?? size.height / 2) - childSize.height - 14).clamp(
+            safeTop,
+            size.height - safeBottom - childSize.height,
+          )
+        : (anchor.bottom + 12).clamp(
+            safeTop,
+            size.height - safeBottom - childSize.height,
+          );
+    return Offset(left.toDouble(), top.toDouble());
+  }
+
+  @override
+  bool shouldRelayout(covariant _CoachmarkPositionDelegate oldDelegate) =>
+      oldDelegate.target != target ||
+      oldDelegate.safeTop != safeTop ||
+      oldDelegate.safeBottom != safeBottom;
+}
+
+class _CoachmarkCard extends StatelessWidget {
+  const _CoachmarkCard({
+    required this.title,
+    required this.description,
+    required this.step,
+    required this.totalSteps,
+    required this.onNext,
+    required this.onSkip,
+  });
+
+  final String title;
+  final String description;
+  final int step;
+  final int totalSteps;
+  final VoidCallback onNext;
+  final VoidCallback onSkip;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Colors.transparent,
+    child: Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFC9F1E1)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x33000000),
+            blurRadius: 28,
+            offset: Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.lightbulb_outline, color: Color(0xFF079669)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF253043),
+                  ),
+                ),
+              ),
+              Text(
+                '$step/$totalSteps',
+                style: const TextStyle(color: Color(0xFF667085), fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(description, style: const TextStyle(fontSize: 13, height: 1.4)),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(onPressed: onSkip, child: const Text('Bỏ qua')),
+              const SizedBox(width: 6),
+              FilledButton(
+                onPressed: onNext,
+                child: Text(step == totalSteps ? 'Xong' : 'Tiếp'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _CoachmarkScrimPainter extends CustomPainter {
+  const _CoachmarkScrimPainter(this.target);
+  final Rect? target;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path()..addRect(Offset.zero & size);
+    final anchor = target;
+    if (anchor != null) {
+      path
+        ..addRRect(
+          RRect.fromRectAndRadius(anchor.inflate(8), const Radius.circular(18)),
+        )
+        ..fillType = PathFillType.evenOdd;
+    }
+    canvas.drawPath(path, Paint()..color = const Color(0xB8000000));
+  }
+
+  @override
+  bool shouldRepaint(covariant _CoachmarkScrimPainter oldDelegate) =>
+      oldDelegate.target != target;
+}
+
+class _CoachmarkOutlinePainter extends CustomPainter {
+  const _CoachmarkOutlinePainter(this.target);
+  final Rect target;
+
+  @override
+  void paint(Canvas canvas, Size size) => canvas.drawRRect(
+    RRect.fromRectAndRadius(target.inflate(7), const Radius.circular(18)),
+    Paint()
+      ..color = const Color(0xFF38D39F)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2,
+  );
+
+  @override
+  bool shouldRepaint(covariant _CoachmarkOutlinePainter oldDelegate) =>
+      oldDelegate.target != target;
 }
 
 class _TutorialPage {
