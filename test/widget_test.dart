@@ -453,6 +453,13 @@ void main() {
     setTestViewport(tester, const Size(393, 852));
     await tester.pumpWidget(const VineatApp());
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Báo cáo').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Chưa có hoạt động được ghi nhận'), findsOneWidget);
+    expect(find.text('Xu hướng (dữ liệu minh họa)'), findsNothing);
+    expect(find.text('So sánh (dữ liệu minh họa)'), findsNothing);
+    expect(find.text('Mục tiêu mẫu'), findsNothing);
+
     await tester.tap(find.text('Trang chủ').last);
     await tester.pumpAndSettle();
     expect(
@@ -492,6 +499,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Đã sử dụng tháng này'), findsOneWidget);
     expect(find.text('Đã sử dụng Thịt heo ba chỉ'), findsOneWidget);
+    expect(find.text('Xu hướng (dữ liệu minh họa)'), findsNothing);
+    expect(find.text('Mục tiêu mẫu'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }
