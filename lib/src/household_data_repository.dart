@@ -176,6 +176,65 @@ class HouseholdDataRepository {
     );
   }
 
+  Future<bool> hasImportedDemoInventory(String householdId) async {
+    final rows = await AppServices.client
+        .from('demo_imports')
+        .select('id')
+        .eq('household_id', householdId)
+        .eq('import_key', 'local-demo-v1')
+        .limit(1);
+    return rows.isNotEmpty;
+  }
+
+  Future<int> importDemoInventory({
+    required String householdId,
+    required List<InventoryItemRecord> items,
+  }) async {
+    final payload = items
+        .map(
+          (item) => {
+            'name': item.name,
+            'quantity': item.quantity,
+            'unit': item.unit,
+            'price_vnd': item.priceVnd,
+            'expiry_date': item.expiry?.toIso8601String().split('T').first,
+            'image_index': item.imageIndex,
+          },
+        )
+        .toList();
+    final imported = await AppServices.client.rpc(
+      'import_demo_inventory',
+      params: {
+        'p_household_id': householdId,
+        'p_import_key': 'local-demo-v1',
+        'p_items': payload,
+      },
+    );
+    return imported is num ? imported.toInt() : 0;
+  }
+
+  Future<bool> isTutorialPageCompleted(String pageKey) async {
+    final userId = AppServices.client.auth.currentUser?.id;
+    if (userId == null) return false;
+    final rows = await AppServices.client
+        .from('tutorial_progress')
+        .select('page_key')
+        .eq('user_id', userId)
+        .eq('page_key', pageKey)
+        .limit(1);
+    return rows.isNotEmpty;
+  }
+
+  Future<void> markTutorialPageCompleted(String pageKey) async {
+    final userId = AppServices.client.auth.currentUser?.id;
+    if (userId == null) return;
+    await AppServices.client.from('tutorial_progress').upsert({
+      'user_id': userId,
+      'page_key': pageKey,
+      'completed_at': DateTime.now().toUtc().toIso8601String(),
+    }, onConflict: 'user_id,page_key');
+  }
+
   Future<List<RemoteShoppingItem>> loadShoppingItems() async {
     await _ensureScope();
     final householdId = _householdId;

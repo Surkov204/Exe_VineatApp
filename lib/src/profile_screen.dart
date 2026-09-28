@@ -110,70 +110,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         icon: const Icon(Icons.arrow_back),
       ),
       titleSpacing: 0,
-      title: Row(
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: _green,
-              borderRadius: BorderRadius.circular(9),
-            ),
-            child: const Icon(Icons.eco, color: Colors.white, size: 19),
-          ),
-          const SizedBox(width: 9),
-          const Text(
-            'ViNeat',
-            style: TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.w900,
-              color: _ink,
-            ),
-          ),
-        ],
-      ),
+      title: const Text('Cài đặt'),
       actions: [
         IconButton.filledTonal(
           onPressed: () => showGlobalSearch(context),
           icon: const Icon(Icons.search),
           style: IconButton.styleFrom(backgroundColor: const Color(0xFFF3F4F6)),
         ),
-        const SizedBox(width: 4),
-        IconButton.filledTonal(
-          tooltip: 'Thông báo',
-          onPressed: () => _message('Bạn chưa có thông báo mới'),
-          icon: const Icon(Icons.notifications_none),
-          style: IconButton.styleFrom(backgroundColor: const Color(0xFFF3F4F6)),
-        ),
-        const SizedBox(width: 4),
-        IconButton.filledTonal(
-          tooltip: 'Hồ sơ hiện tại',
-          onPressed: () => _message('Bạn đang ở trang hồ sơ'),
-          icon: const Icon(Icons.person_outline),
-          style: IconButton.styleFrom(
-            backgroundColor: const Color(0xFFD9FAEA),
-            foregroundColor: _green,
-          ),
-        ),
         const SizedBox(width: 10),
       ],
-      bottom: const PreferredSize(
-        preferredSize: Size.fromHeight(42),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(17, 4, 17, 12),
-            child: Text(
-              'Cài đặt',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-                color: _ink,
-              ),
-            ),
-          ),
-        ),
-      ),
     ),
     body: ListView(
       padding: const EdgeInsets.all(16),
@@ -296,7 +241,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           title: 'Trợ giúp',
           child: _LinkRow(
             'Xem hướng dẫn từng trang',
-            () => showAppTutorial(context),
+            () => showAppTutorial(
+              context,
+              onStepChanged: (index) => tutorialPageRequest.value = index,
+            ),
           ),
         ),
         const SizedBox(height: 14),
@@ -352,13 +300,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ],
         const SizedBox(height: 18),
-        const Center(
+        Center(
           child: Padding(
-            padding: EdgeInsets.symmetric(vertical: 10),
+            padding: const EdgeInsets.symmetric(vertical: 10),
             child: Text(
-              'Bản demo lưu dữ liệu trên thiết bị này; chưa bật đăng nhập hoặc đồng bộ gia đình.',
+              AppServices.configured
+                  ? 'Dữ liệu của gia đình đang chọn được đồng bộ an toàn qua Supabase.'
+                  : 'Bản demo lưu dữ liệu trên thiết bị này; chưa bật đăng nhập hoặc đồng bộ gia đình.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: _muted),
+              style: const TextStyle(fontSize: 11, color: _muted),
             ),
           ),
         ),

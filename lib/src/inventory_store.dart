@@ -23,7 +23,7 @@ class ShoppingSnapshot {
 /// It intentionally keeps the prototype's compact tuple at the UI boundary,
 /// but owns persistence so every screen reads the same inventory and a demo
 /// survives an app restart on Android.
-final inventoryFoods = <FoodSummary>[
+const demoInventorySeed = <FoodSummary>[
   ('Rau muống', '2 bó · 15.000đ', 'Còn 2 ngày', 0),
   ('Cà chua', '5 quả · 25.000đ', 'Tươi ngon', 1),
   ('Thịt heo ba chỉ', '500 gram · 65.000đ', 'Còn 3 ngày', 2),
@@ -35,6 +35,8 @@ final inventoryFoods = <FoodSummary>[
   ('Sữa tươi Vinamilk', '2 hộp · 32.000đ', 'Tươi ngon', 8),
   ('Hành lá', '1 bó · 3.000đ', 'Tươi ngon', 9),
 ];
+
+final inventoryFoods = <FoodSummary>[...demoInventorySeed];
 
 final inventoryRevision = ValueNotifier<int>(0);
 final customFoodImagePaths = <String, String>{};
@@ -101,10 +103,52 @@ final shoppingRevision = ValueNotifier<int>(0);
 
 Future<void> _inventoryWriteQueue = Future<void>.value();
 Future<void> _shoppingWriteQueue = Future<void>.value();
+Future<void>? _localRestoreOperation;
 
 const _inventoryKey = 'vineat.demo.inventory.v1';
 const _shoppingKey = 'vineat.demo.shopping.v1';
 const _eventsKey = 'vineat.demo.events.v1';
+const _householdCacheScopeKey = 'vineat.household_cache_scope.v1';
+
+/// Shares a single in-flight cache restore between app startup and the
+/// authenticated household gate without delaying the login screen.
+Future<void> restoreLocalDemoData() async {
+  final pending = _localRestoreOperation;
+  if (pending != null) return pending;
+  final operation = () async {
+    final preferences = await SharedPreferences.getInstance();
+    // Remote household snapshots are always fetched again under RLS. Never
+    // hydrate another user's last household into a new account's import preview.
+    if (preferences.containsKey(_householdCacheScopeKey)) return;
+    await restoreInventory();
+    final shopping = await restoreShopping();
+    if (shopping != null) {
+      shoppingItems
+        ..clear()
+        ..addAll(shopping.items);
+      shoppingChecked
+        ..clear()
+        ..addAll(shopping.checked);
+      shoppingRevision.value++;
+    }
+  }();
+  _localRestoreOperation = operation;
+  try {
+    await operation;
+  } finally {
+    if (identical(_localRestoreOperation, operation)) {
+      _localRestoreOperation = null;
+    }
+  }
+}
+
+Future<List<FoodSummary>> localDemoPreviewSnapshot() async {
+  final preferences = await SharedPreferences.getInstance();
+  if (preferences.containsKey(_householdCacheScopeKey)) {
+    return List<FoodSummary>.of(demoInventorySeed);
+  }
+  return List<FoodSummary>.of(inventoryFoods);
+}
 
 Future<void> restoreInventory() async {
   final revisionAtStart = inventoryRevision.value;
@@ -164,6 +208,7 @@ Future<void> restoreInventory() async {
 
 Future<void> _persistInventory() {
   final revisionAtQueue = inventoryRevision.value;
+  final cacheScope = _householdCacheScope();
   final encoded = jsonEncode(
     inventoryFoods
         .map(
@@ -184,6 +229,11 @@ Future<void> _persistInventory() {
       final preferences = await SharedPreferences.getInstance();
       if (revisionAtQueue != inventoryRevision.value) return;
       await preferences.setString(_inventoryKey, encoded);
+      if (cacheScope == null) {
+        await preferences.remove(_householdCacheScopeKey);
+      } else {
+        await preferences.setString(_householdCacheScopeKey, cacheScope);
+      }
     } catch (_) {
       // The in-memory state remains usable when storage is temporarily absent.
     }
@@ -456,6 +506,14 @@ void _withRemoteSync(Future<void> Function() operation) {
   }());
 }
 
+String? _householdCacheScope() {
+  if (!AppServices.configured) return null;
+  final userId = AppServices.client.auth.currentUser?.id;
+  if (userId == null) return null;
+  final householdId = HouseholdService.instance.active.value?.id ?? 'none';
+  return '$userId:$householdId';
+}
+
 String _decimalAmount(double value) => value == value.roundToDouble()
     ? value.toInt().toString()
     : value
@@ -573,18 +631,7 @@ Future<void> resetDemoInventory() async {
   inventoryEvents.clear();
   inventoryFoods
     ..clear()
-    ..addAll(const [
-      ('Rau muống', '2 bó · 15.000đ', 'Còn 2 ngày', 0),
-      ('Cà chua', '5 quả · 25.000đ', 'Tươi ngon', 1),
-      ('Thịt heo ba chỉ', '500 gram · 65.000đ', 'Còn 3 ngày', 2),
-      ('Cá basa fillet', '3 miếng · 45.000đ', 'Hết hạn', 3),
-      ('Trứng gà', '10 quả · 35.000đ', 'Tươi ngon', 4),
-      ('Cải thảo', '1 cây · 20.000đ', 'Tươi ngon', 5),
-      ('Gạo ST25', '5 kg · 175.000đ', 'Tươi ngon', 6),
-      ('Nước mắm Nam Ngư', '1 chai · 42.000đ', 'Tươi ngon', 7),
-      ('Sữa tươi Vinamilk', '2 hộp · 32.000đ', 'Tươi ngon', 8),
-      ('Hành lá', '1 bó · 3.000đ', 'Tươi ngon', 9),
-    ]);
+    ..addAll(demoInventorySeed);
   inventoryRevision.value++;
   final revisionAtQueue = inventoryRevision.value;
   final remove = _inventoryWriteQueue.then((_) async {

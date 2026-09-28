@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'app_services.dart';
 import 'food_detail.dart';
 import 'food_image.dart';
+import 'fridge_showcase.dart';
 import 'global_search.dart';
 import 'household_data_repository.dart';
 import 'inventory_store.dart';
@@ -161,6 +162,8 @@ class FridgeScreen extends StatefulWidget {
 }
 
 class _FridgeScreenState extends State<FridgeScreen> {
+  bool _showOnlyAttention = false;
+
   Future<void> _addFood() async {
     final food = await showDialog<FoodSummary>(
       context: context,
@@ -213,6 +216,9 @@ class _FridgeScreenState extends State<FridgeScreen> {
             .where((food) => food.$3 == 'Hết hạn')
             .fold<int>(0, (sum, food) => sum + priceOf(food));
         final wasteRatio = totalValue == 0 ? 0.0 : expiredValue / totalValue;
+        final displayedFoods = _showOnlyAttention
+            ? inventoryFoods.where((food) => food.$3 != 'Tươi ngon').toList()
+            : inventoryFoods;
         return Stack(
           children: [
             Column(
@@ -226,6 +232,15 @@ class _FridgeScreenState extends State<FridgeScreen> {
                   child: ListView(
                     padding: const EdgeInsets.all(14),
                     children: [
+                      SmartFridgeShowcase(
+                        inventoryCount: inventoryFoods.length,
+                        expiringCount: warningCount + expiredCount,
+                        onInventoryTap: () =>
+                            setState(() => _showOnlyAttention = false),
+                        onExpiringTap: () =>
+                            setState(() => _showOnlyAttention = true),
+                      ),
+                      const SizedBox(height: 12),
                       LayoutBuilder(
                         builder: (context, constraints) => GridView.count(
                           crossAxisCount: 2,
@@ -328,12 +343,35 @@ class _FridgeScreenState extends State<FridgeScreen> {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      const SectionTitle(
-                        'Thực phẩm trong tủ',
-                        trailing: 'Xem tất cả',
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SectionTitle(
+                              _showOnlyAttention
+                                  ? 'Món cần ưu tiên'
+                                  : 'Thực phẩm trong tủ',
+                              trailing: _showOnlyAttention
+                                  ? null
+                                  : 'Xem tất cả',
+                            ),
+                          ),
+                          if (_showOnlyAttention)
+                            TextButton(
+                              onPressed: () =>
+                                  setState(() => _showOnlyAttention = false),
+                              child: const Text('Bỏ lọc'),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 8),
-                      ...inventoryFoods.map(
+                      if (displayedFoods.isEmpty)
+                        const Card(
+                          child: Padding(
+                            padding: EdgeInsets.all(18),
+                            child: Text('Hiện chưa có món nào cần ưu tiên.'),
+                          ),
+                        ),
+                      ...displayedFoods.map(
                         (f) => _FoodTile(
                           name: f.$1,
                           detail: f.$2,

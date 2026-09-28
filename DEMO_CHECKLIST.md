@@ -12,9 +12,10 @@
 
 ## Kịch bản 5–7 phút
 
-1. **Onboarding và điều hướng**: lần đầu mở app, đi hết 5 bước hướng dẫn; chuyển
-   qua từng tab rồi quay lại Trang chủ. Ở tablet/desktop hẹp, xác nhận thanh điều
-   hướng đổi thành rail và nội dung không bị phủ.
+1. **Onboarding và điều hướng**: lần đầu vào từng tab, đọc thẻ hướng dẫn ngắn
+   ngay trong bố cục rồi bấm “Đã hiểu”; thẻ không chặn hoặc phủ nội dung. Có thể
+   mở Hồ sơ → Trợ giúp để xem lại tour 5 bước. Chuyển qua từng tab rồi quay lại
+   Trang chủ. Ở tablet, xác nhận thanh điều hướng đổi thành rail.
 2. **Tủ lạnh**: thêm hoặc mở một món; thử cập nhật, ghi nhận đã sử dụng và xem
    phản hồi. Danh sách vẫn cuộn được đến các món sát cuối màn hình.
 3. **Scan**: chụp/chọn hóa đơn, rà soát và bỏ chọn dòng sai trước khi nhập. Nếu
@@ -27,8 +28,9 @@
 6. **Báo cáo**: xác nhận tổng kho, sử dụng/lãng phí và hoạt động phản ánh các thao
    tác vừa xác nhận. Món mẫu không được tính là lịch sử sử dụng.
 7. **Gia đình (cloud demo)**: tài khoản A tạo gia đình và chia sẻ mã; tài khoản B
-   đăng nhập, nhập mã để tham gia. Chuyển gia đình ở Hồ sơ; chủ sở hữu có thể đổi
-   mã mời. Không trình diễn thao tác đổi mã nếu còn người đang dùng mã cũ.
+   đăng nhập, nhập mã để tham gia. Chủ nhà xem trước rồi chọn nhập dữ liệu mẫu một
+   lần hoặc bắt đầu tủ trống; đổi gia đình, phân vai trò và xóa thành viên ở Hồ sơ.
+   Có thể đổi mã mời; mã cũ sẽ hết hiệu lực ngay.
 
 ## Tiêu chí chấp nhận
 
