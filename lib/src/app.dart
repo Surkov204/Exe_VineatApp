@@ -117,6 +117,7 @@ class _AppShellState extends State<AppShell>
   ];
   int _index = 0;
   int _transitionDirection = 1;
+  final Set<int> _visitedTabs = {0};
   bool _showPageTip = false;
   late final AnimationController _tabTransition;
   ModalRoute<dynamic>? _route;
@@ -275,6 +276,7 @@ class _AppShellState extends State<AppShell>
     setState(() {
       _transitionDirection = value > _index ? 1 : -1;
       _index = value;
+      _visitedTabs.add(value);
       _showPageTip = false;
     });
     activeAppTabIndex.value = value;
@@ -418,7 +420,9 @@ class _AppShellState extends State<AppShell>
                                 for (var i = 0; i < _pages.length; i++)
                                   TickerMode(
                                     enabled: i == _index,
-                                    child: _pages[i],
+                                    child: _visitedTabs.contains(i)
+                                        ? _pages[i]
+                                        : const SizedBox.shrink(),
                                   ),
                               ],
                             ),
