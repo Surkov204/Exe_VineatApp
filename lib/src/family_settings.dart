@@ -338,7 +338,7 @@ class _FamilySettingsState extends State<FamilySettings> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (_loading)
-          const LinearProgressIndicator(minHeight: 2)
+          const _FamilyLoadingSkeleton()
         else if (_households.isNotEmpty) ...[
           Text(
             'Đang quản lý ${_households.length} gia đình',
@@ -411,7 +411,9 @@ class _FamilySettingsState extends State<FamilySettings> {
                   if (active.role == 'owner')
                     IconButton(
                       tooltip: 'Đổi mã mời',
-                      onPressed: _busy ? null : () => _rotateCode(active),
+                      onPressed: _busy || _loading
+                          ? null
+                          : () => _rotateCode(active),
                       icon: const Icon(Icons.refresh),
                     ),
                 ],
@@ -476,7 +478,7 @@ class _FamilySettingsState extends State<FamilySettings> {
                     if (active.role == 'owner' && !isOwner)
                       PopupMenuButton<String>(
                         tooltip: 'Quản lý thành viên',
-                        enabled: !_busy,
+                        enabled: !_busy && !_loading,
                         onSelected: (value) {
                           if (value == 'remove') {
                             _removeMember(member);
@@ -521,7 +523,7 @@ class _FamilySettingsState extends State<FamilySettings> {
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
-                onPressed: _busy ? null : () => _leave(active),
+                onPressed: _busy || _loading ? null : () => _leave(active),
                 icon: const Icon(Icons.logout, size: 16),
                 label: const Text('Rời gia đình đang chọn'),
               ),
@@ -537,12 +539,12 @@ class _FamilySettingsState extends State<FamilySettings> {
           runSpacing: 8,
           children: [
             OutlinedButton.icon(
-              onPressed: _busy ? null : _create,
+              onPressed: _busy || _loading ? null : _create,
               icon: const Icon(Icons.add_home_outlined),
               label: const Text('Tạo gia đình'),
             ),
             OutlinedButton.icon(
-              onPressed: _busy ? null : _join,
+              onPressed: _busy || _loading ? null : _join,
               icon: const Icon(Icons.group_add_outlined),
               label: const Text('Nhập mã mời'),
             ),
@@ -560,6 +562,118 @@ class _FamilySettingsState extends State<FamilySettings> {
       ],
     );
   }
+}
+
+class _FamilyLoadingSkeleton extends StatelessWidget {
+  const _FamilyLoadingSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: reduceMotion ? 0.62 : 0.38, end: 0.72),
+      duration: reduceMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 420),
+      curve: Curves.easeOut,
+      builder: (context, opacity, _) => Opacity(
+        opacity: opacity,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const _SkeletonLine(width: 132, height: 12),
+            const SizedBox(height: 10),
+            Container(
+              height: 54,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8ECEB),
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8FBF4),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Row(
+                children: [
+                  _SkeletonCircle(size: 22),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _SkeletonLine(width: 108, height: 10),
+                        SizedBox(height: 7),
+                        _SkeletonLine(width: 156, height: 13),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 15),
+            const _SkeletonLine(width: 88, height: 13),
+            const SizedBox(height: 10),
+            for (var index = 0; index < 2; index++) ...[
+              if (index > 0) const SizedBox(height: 12),
+              const Row(
+                children: [
+                  _SkeletonCircle(size: 34),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _SkeletonLine(width: 124, height: 12),
+                        SizedBox(height: 7),
+                        _SkeletonLine(width: 76, height: 10),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SkeletonLine extends StatelessWidget {
+  const _SkeletonLine({required this.width, required this.height});
+
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: width,
+    height: height,
+    decoration: BoxDecoration(
+      color: const Color(0xFFDDE3E1),
+      borderRadius: BorderRadius.circular(height),
+    ),
+  );
+}
+
+class _SkeletonCircle extends StatelessWidget {
+  const _SkeletonCircle({required this.size});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: size,
+    height: size,
+    decoration: const BoxDecoration(
+      color: Color(0xFFDDE3E1),
+      shape: BoxShape.circle,
+    ),
+  );
 }
 
 extension _FirstOrNull<T> on Iterable<T> {

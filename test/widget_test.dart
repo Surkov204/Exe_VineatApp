@@ -309,6 +309,36 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('labels sample lists honestly and fits Scan on a small phone', (
+    tester,
+  ) async {
+    setTestViewport(tester, const Size(320, 568));
+    await tester.pumpWidget(const VineatApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Scan'));
+    await tester.pumpAndSettle();
+    expect(find.text('Không phải hóa đơn thật'), findsOneWidget);
+    expect(find.text('Quét gần đây'), findsNothing);
+    expect(find.text('Winmart'), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text('Dữ liệu mẫu').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Đi chợ hàng tuần'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dữ liệu mẫu · không phải OCR'), findsOneWidget);
+    expect(find.text('Kết quả OCR · cần kiểm tra'), findsNothing);
+    expect(
+      find.text('Danh sách minh họa, không đại diện hóa đơn thật.'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
   testWidgets('uses a side rail on tablet widths and returns home', (
     tester,
   ) async {

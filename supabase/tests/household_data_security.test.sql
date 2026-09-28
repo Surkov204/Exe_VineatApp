@@ -1,6 +1,77 @@
 begin;
 
-select plan(17);
+select plan(33);
+
+select ok(
+  not has_table_privilege('anon', 'public.households', 'select')
+  and not has_table_privilege('anon', 'public.inventory_items', 'select')
+  and not has_table_privilege('authenticated', 'public.household_members', 'insert')
+  and not has_table_privilege('authenticated', 'public.household_members', 'update')
+  and not has_table_privilege('authenticated', 'public.household_members', 'delete'),
+  'private household rows are authenticated-only and memberships cannot be edited directly'
+);
+
+select ok(
+  has_table_privilege('authenticated', 'public.inventory_items', 'select')
+  and has_table_privilege('authenticated', 'public.inventory_items', 'insert')
+  and has_table_privilege('authenticated', 'public.inventory_items', 'update')
+  and has_table_privilege('authenticated', 'public.inventory_items', 'delete'),
+  'authenticated members receive only the inventory operations used by the app'
+);
+
+select ok(
+  has_table_privilege('authenticated', 'public.shopping_items', 'select')
+  and has_table_privilege('authenticated', 'public.shopping_items', 'insert')
+  and has_table_privilege('authenticated', 'public.shopping_items', 'update')
+  and has_table_privilege('authenticated', 'public.shopping_items', 'delete'),
+  'authenticated members receive the shopping operations used by the app'
+);
+
+select ok(
+  has_table_privilege('authenticated', 'public.inventory_events', 'select')
+  and not has_table_privilege('authenticated', 'public.inventory_events', 'insert')
+  and not has_table_privilege('authenticated', 'public.inventory_events', 'update')
+  and not has_table_privilege('authenticated', 'public.inventory_events', 'delete'),
+  'report history is readable but cannot be directly forged or removed'
+);
+
+select ok(
+  has_table_privilege('authenticated', 'public.receipts', 'select')
+  and has_table_privilege('authenticated', 'public.receipt_items', 'select')
+  and not has_table_privilege('authenticated', 'public.receipts', 'insert')
+  and not has_table_privilege('authenticated', 'public.receipt_items', 'insert'),
+  'receipt history is read-only outside its transactional import function'
+);
+
+select ok(
+  has_table_privilege('authenticated', 'public.tutorial_progress', 'select')
+  and has_table_privilege('authenticated', 'public.tutorial_progress', 'insert')
+  and has_table_privilege('authenticated', 'public.tutorial_progress', 'update'),
+  'authenticated users can save their own tutorial progress'
+);
+
+select ok(
+  has_table_privilege('authenticated', 'public.demo_imports', 'select')
+  and not has_table_privilege('authenticated', 'public.demo_imports', 'insert'),
+  'one-time demo imports can only be claimed by the server function'
+);
+
+select ok(
+  has_table_privilege('authenticated', 'public.recipe_cook_events', 'select')
+  and has_table_privilege('authenticated', 'public.recipe_cook_event_items', 'select')
+  and not has_table_privilege('authenticated', 'public.recipe_cook_events', 'insert')
+  and not has_table_privilege('authenticated', 'public.recipe_cook_event_items', 'insert'),
+  'cooking history is readable but is written only by the transaction function'
+);
+
+select ok(
+  not has_table_privilege('anon', 'storage.objects', 'select')
+  and has_table_privilege('authenticated', 'storage.objects', 'select')
+  and has_table_privilege('authenticated', 'storage.objects', 'insert')
+  and has_table_privilege('authenticated', 'storage.objects', 'update')
+  and not has_table_privilege('authenticated', 'storage.objects', 'delete'),
+  'private family photos expose only the authenticated upload/read/overwrite operations'
+);
 
 insert into auth.users (
   id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -123,6 +194,12 @@ select lives_ok(
   )$$,
   'the household owner can rotate an invite code'
 );
+select set_config(
+  'vineat.test.rotated_invite_code',
+  (select invite_code from public.households
+   where id = '11111111-1111-4111-8111-111111111111'),
+  true
+);
 
 reset role;
 select set_config('request.jwt.claim.sub', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', true);
@@ -153,6 +230,57 @@ select is(
   'repeated purchase never creates duplicate stock'
 );
 
+select throws_ok(
+  $$select public.set_household_member_role(
+    '11111111-1111-4111-8111-111111111111',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'adult'
+  )$$,
+  '42501',
+  'Only a household owner may change member roles',
+  'a regular member cannot change household roles'
+);
+
+select throws_ok(
+  $$select public.remove_household_member(
+    '11111111-1111-4111-8111-111111111111',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  )$$,
+  '42501',
+  'Only a household owner may remove members',
+  'a regular member cannot remove another household member'
+);
+
+reset role;
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', true);
+set local role authenticated;
+
+select lives_ok(
+  $$select public.set_household_member_role(
+    '11111111-1111-4111-8111-111111111111',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'adult'
+  )$$,
+  'the owner can update a member role'
+);
+
+select lives_ok(
+  $$select public.remove_household_member(
+    '11111111-1111-4111-8111-111111111111',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  )$$,
+  'the owner can revoke a member'
+);
+
+reset role;
+select set_config('request.jwt.claim.sub', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', true);
+set local role authenticated;
+
+select is(
+  (select count(*)::integer from public.inventory_items
+   where household_id = '11111111-1111-4111-8111-111111111111'),
+  0,
+  'a removed member immediately loses access to family inventory'
+);
+
 reset role;
 select set_config('request.jwt.claim.sub', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', true);
 set local role authenticated;
@@ -181,6 +309,21 @@ select is(
    where household_id = '11111111-1111-4111-8111-111111111111'),
   0,
   'an unrelated account cannot read another household report history'
+);
+
+select lives_ok(
+  $$select * from public.join_household(
+    lower(current_setting('vineat.test.rotated_invite_code'))
+  )$$,
+  'a second account can join using a valid case-insensitive invite code'
+);
+
+select is(
+  (select member_role from public.household_members
+   where household_id = '11111111-1111-4111-8111-111111111111'
+     and user_id = auth.uid()),
+  'member',
+  'a successful invite adds the account with the member role'
 );
 
 select * from finish();

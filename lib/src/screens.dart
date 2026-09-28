@@ -1224,6 +1224,8 @@ class _MealSuggestion extends StatelessWidget {
   );
 }
 
+enum _ScanInputOrigin { recognizedReceipt, sampleTemplate, manualEntry }
+
 class ScanScreen extends StatefulWidget {
   const ScanScreen({super.key});
 
@@ -1241,6 +1243,7 @@ class _ScanScreenState extends State<ScanScreen>
   final ocrService = ReceiptOcrService();
   bool importing = false;
   String? scanError;
+  _ScanInputOrigin inputOrigin = _ScanInputOrigin.recognizedReceipt;
   final selected = <int>{0, 1, 2, 3, 4, 5, 6, 7};
   final timers = <Timer>[];
   late final AnimationController rotation;
@@ -1257,6 +1260,7 @@ class _ScanScreenState extends State<ScanScreen>
     if (template == null || !mounted) return;
     setState(() {
       scanResult = null;
+      inputOrigin = _ScanInputOrigin.sampleTemplate;
       results
         ..clear()
         ..addAll(template.map(_lineFromLegacy));
@@ -1276,6 +1280,7 @@ class _ScanScreenState extends State<ScanScreen>
     if (items == null || items.isEmpty || !mounted) return;
     setState(() {
       scanResult = null;
+      inputOrigin = _ScanInputOrigin.manualEntry;
       results
         ..clear()
         ..addAll(items.map(_lineFromLegacy));
@@ -1434,6 +1439,7 @@ class _ScanScreenState extends State<ScanScreen>
     setState(() {
       stage = 1;
       scanStep = 0;
+      inputOrigin = _ScanInputOrigin.recognizedReceipt;
     });
     rotation.repeat();
     try {
@@ -1487,9 +1493,11 @@ class _ScanScreenState extends State<ScanScreen>
       stage = 0;
       scanStep = 0;
       receiptImage = null;
-      selected
-        ..clear()
-        ..addAll(List.generate(results.length, (index) => index));
+      scanResult = null;
+      scanError = null;
+      results.clear();
+      selected.clear();
+      inputOrigin = _ScanInputOrigin.recognizedReceipt;
     });
   }
 
@@ -1630,6 +1638,7 @@ class _ScanScreenState extends State<ScanScreen>
               _ScanResults(
                 items: results,
                 selected: selected,
+                inputOrigin: inputOrigin,
                 onToggle: (index) => setState(
                   () => selected.contains(index)
                       ? selected.remove(index)
@@ -1656,44 +1665,36 @@ class _ScanScreenState extends State<ScanScreen>
               ),
             const SizedBox(height: 18),
             Card(
+              color: const Color(0xFFF1F8FF),
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Column(
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    SectionTitle('Cửa hàng hỗ trợ'),
-                    SizedBox(height: 12),
-                    _Store(Icons.storefront_outlined, 'Winmart'),
-                    _Store(Icons.store_outlined, 'Bách Hóa Xanh'),
-                    _Store(Icons.apartment, 'Mega Market'),
-                    _Store(Icons.apartment, 'Big C / GO!'),
-                    _Store(Icons.apartment, 'Lotte Mart'),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
                   children: [
-                    SectionTitle('Quét gần đây', trailing: 'Xem tất cả'),
-                    SizedBox(height: 10),
-                    _RecentScan(
-                      'Winmart',
-                      '${_shortDate(DateTime.now().subtract(const Duration(days: 2)))} · 12 món',
-                      '385.000đ',
-                    ),
-                    _RecentScan(
-                      'Bách Hóa Xanh',
-                      '${_shortDate(DateTime.now().subtract(const Duration(days: 5)))} · 8 món',
-                      '156.000đ',
-                    ),
-                    _RecentScan(
-                      'Co.op Mart',
-                      '${_shortDate(DateTime.now().subtract(const Duration(days: 9)))} · 15 món',
-                      '520.000đ',
+                    const Icon(Icons.privacy_tip_outlined, color: _green),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Rõ ràng về dữ liệu',
+                            style: TextStyle(
+                              color: _ink,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          SizedBox(height: 5),
+                          Text(
+                            'OCR xử lý trên thiết bị. Hóa đơn chỉ được lưu sau khi bạn rà soát và xác nhận. Danh sách mẫu hoặc nhập thủ công chỉ thêm thực phẩm, không tạo lịch sử quét giả.',
+                            style: TextStyle(
+                              color: _muted,
+                              fontSize: 11,
+                              height: 1.45,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -1748,38 +1749,47 @@ class _InputMethodCard extends StatelessWidget {
         children: [
           const SectionTitle('Chọn cách thêm thực phẩm'),
           const SizedBox(height: 11),
-          Row(
-            children: [
-              _InputMethod(
-                icon: Icons.receipt_long_outlined,
-                label: 'Quét hóa đơn',
-                note: 'Chụp hoặc tải ảnh',
-                active: true,
-                onTap: onScan,
-              ),
-              const SizedBox(width: 8),
-              _InputMethod(
-                icon: Icons.dashboard_customize_outlined,
-                label: 'Theo mẫu',
-                note: 'Chọn danh sách có sẵn',
-                onTap: onTemplate,
-              ),
-              const SizedBox(width: 8),
-              _InputMethod(
-                icon: Icons.edit_note_outlined,
-                label: 'Thủ công',
-                note: 'Tự nhập từng món',
-                onTap: onManual,
-              ),
-              const SizedBox(width: 8),
-              _InputMethod(
-                icon: Icons.mic_none,
-                label: 'Giọng nói',
-                note: 'Chưa hỗ trợ',
-                disabled: true,
-                onTap: () {},
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = constraints.maxWidth < 420 ? 2 : 3;
+              const gap = 8.0;
+              final width =
+                  (constraints.maxWidth - gap * (columns - 1)) / columns;
+              return Wrap(
+                spacing: gap,
+                runSpacing: gap,
+                children: [
+                  SizedBox(
+                    width: width,
+                    child: _InputMethod(
+                      icon: Icons.receipt_long_outlined,
+                      label: 'Quét hóa đơn',
+                      note: 'Chụp hoặc tải ảnh',
+                      active: true,
+                      onTap: onScan,
+                    ),
+                  ),
+                  SizedBox(
+                    width: width,
+                    child: _InputMethod(
+                      icon: Icons.dashboard_customize_outlined,
+                      label: 'Dữ liệu mẫu',
+                      note: 'Không phải hóa đơn thật',
+                      onTap: onTemplate,
+                    ),
+                  ),
+                  SizedBox(
+                    width: width,
+                    child: _InputMethod(
+                      icon: Icons.edit_note_outlined,
+                      label: 'Nhập thủ công',
+                      note: 'Tự nhập từng món',
+                      onTap: onManual,
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -1794,57 +1804,50 @@ class _InputMethod extends StatelessWidget {
     required this.note,
     required this.onTap,
     this.active = false,
-    this.disabled = false,
   });
 
   final IconData icon;
   final String label, note;
   final VoidCallback onTap;
-  final bool active, disabled;
+  final bool active;
 
   @override
-  Widget build(BuildContext context) => Expanded(
-    child: InkWell(
-      onTap: disabled ? null : onTap,
-      borderRadius: BorderRadius.circular(11),
-      child: Container(
-        height: 92,
-        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 9),
-        decoration: BoxDecoration(
-          color: active
-              ? const Color(0xFFE9FBF4)
-              : disabled
-              ? const Color(0xFFF7F8FA)
-              : Colors.white,
-          borderRadius: BorderRadius.circular(11),
-          border: Border.all(
-            color: active ? const Color(0xFF8BE1C3) : const Color(0xFFE5E7EB),
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(11),
+    child: Container(
+      height: 92,
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 9),
+      decoration: BoxDecoration(
+        color: active ? const Color(0xFFE9FBF4) : Colors.white,
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(
+          color: active ? const Color(0xFF8BE1C3) : const Color(0xFFE5E7EB),
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 23, color: _green),
+          const SizedBox(height: 5),
+          Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: _ink,
+            ),
           ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 23, color: disabled ? _muted : _green),
-            const SizedBox(height: 5),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                color: disabled ? _muted : _ink,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              note,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 8, color: _muted),
-            ),
-          ],
-        ),
+          const SizedBox(height: 2),
+          Text(
+            note,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 9, color: _muted),
+          ),
+        ],
       ),
     ),
   );
@@ -2225,6 +2228,7 @@ class _ScanResults extends StatelessWidget {
   const _ScanResults({
     required this.items,
     required this.selected,
+    required this.inputOrigin,
     required this.onToggle,
     required this.onToggleAll,
     required this.onReset,
@@ -2233,12 +2237,26 @@ class _ScanResults extends StatelessWidget {
   });
   final List<ReceiptLine> items;
   final Set<int> selected;
+  final _ScanInputOrigin inputOrigin;
   final ValueChanged<int> onToggle;
   final VoidCallback onToggleAll, onReset, onConfirm;
   final ValueChanged<int> onEdit;
 
   @override
   Widget build(BuildContext context) {
+    final title = switch (inputOrigin) {
+      _ScanInputOrigin.recognizedReceipt => 'Kết quả OCR · cần kiểm tra',
+      _ScanInputOrigin.sampleTemplate => 'Dữ liệu mẫu · không phải OCR',
+      _ScanInputOrigin.manualEntry => 'Thực phẩm nhập thủ công',
+    };
+    final description = switch (inputOrigin) {
+      _ScanInputOrigin.recognizedReceipt =>
+        'OCR có thể đọc sai; hãy rà soát trước khi lưu.',
+      _ScanInputOrigin.sampleTemplate =>
+        'Danh sách minh họa, không đại diện hóa đơn thật.',
+      _ScanInputOrigin.manualEntry =>
+        'Kiểm tra thông tin bạn vừa nhập trước khi lưu.',
+    };
     final total = selected.fold<int>(
       0,
       (sum, index) => sum + items[index].totalPriceVnd,
@@ -2247,158 +2265,240 @@ class _ScanResults extends StatelessWidget {
       RegExp(r'\B(?=(\d{3})+(?!\d))'),
       (_) => '.',
     );
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Kết quả quét',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w900,
-                          color: _ink,
-                        ),
-                      ),
-                      Text(
-                        'Đã chuẩn bị ${items.length} mặt hàng',
-                        style: const TextStyle(fontSize: 11, color: _muted),
-                      ),
-                    ],
-                  ),
-                ),
-                TextButton(
-                  onPressed: onToggleAll,
-                  child: Text(
-                    selected.length == items.length
-                        ? 'Bỏ chọn tất cả'
-                        : 'Chọn tất cả',
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F3F5),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Text(
-                    '${selected.length}/${items.length}',
-                    style: const TextStyle(fontSize: 11, color: _muted),
-                  ),
-                ),
-              ],
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 390;
+        final selectionCount = Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF1F3F5),
+            borderRadius: BorderRadius.circular(14),
           ),
-          const Divider(height: 1),
-          ...items.asMap().entries.map((entry) {
-            final checked = selected.contains(entry.key);
-            return InkWell(
-              onTap: () => onToggle(entry.key),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 13,
-                ),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Color(0xFFF0F1F3))),
-                ),
-                child: Row(
-                  children: [
-                    Checkbox(
-                      value: checked,
-                      onChanged: (_) => onToggle(entry.key),
-                      activeColor: _green,
-                    ),
-                    const SizedBox(width: 5),
-                    Expanded(
-                      child: Column(
+          child: Text(
+            '${selected.length}/${items.length}',
+            style: const TextStyle(fontSize: 11, color: _muted),
+          ),
+        );
+        final titleBlock = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+                color: _ink,
+              ),
+            ),
+            Text(
+              description,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, color: _muted),
+            ),
+          ],
+        );
+        final toggleAll = TextButton(
+          onPressed: onToggleAll,
+          child: Text(
+            selected.length == items.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả',
+          ),
+        );
+        return Card(
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(14),
+                child: compact
+                    ? Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            entry.value.normalizedName,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                              color: _ink,
-                            ),
+                          Row(
+                            children: [
+                              Expanded(child: titleBlock),
+                              const SizedBox(width: 8),
+                              selectionCount,
+                            ],
                           ),
-                          Text(
-                            '${entry.value.quantity == entry.value.quantity.roundToDouble() ? entry.value.quantity.toInt() : entry.value.quantity} ${entry.value.unit} · HSD ${entry.value.estimatedExpiryDate == null ? 'chưa rõ' : _shortDate(entry.value.estimatedExpiryDate!)} · ${(entry.value.confidence * 100).round()}%',
-                            style: const TextStyle(fontSize: 11, color: _muted),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: toggleAll,
                           ),
                         ],
+                      )
+                    : Row(
+                        children: [
+                          Expanded(child: titleBlock),
+                          toggleAll,
+                          selectionCount,
+                        ],
+                      ),
+              ),
+              const Divider(height: 1),
+              ...items.asMap().entries.map((entry) {
+                final checked = selected.contains(entry.key);
+                return InkWell(
+                  onTap: () => onToggle(entry.key),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 13,
+                    ),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: Color(0xFFF0F1F3)),
                       ),
                     ),
-                    Column(
+                    child: Row(
                       children: [
-                        Text(
-                          '${entry.value.totalPriceVnd.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => '.')}đ',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF475467),
+                        Checkbox(
+                          value: checked,
+                          onChanged: (_) => onToggle(entry.key),
+                          activeColor: _green,
+                        ),
+                        const SizedBox(width: 5),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                entry.value.normalizedName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                  color: _ink,
+                                ),
+                              ),
+                              Text(
+                                '${entry.value.quantity == entry.value.quantity.roundToDouble() ? entry.value.quantity.toInt() : entry.value.quantity} ${entry.value.unit} · HSD ${entry.value.estimatedExpiryDate == null ? 'chưa rõ' : _shortDate(entry.value.estimatedExpiryDate!)} · ${(entry.value.confidence * 100).round()}%',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: _muted,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        IconButton(
-                          tooltip: 'Sửa kết quả OCR',
-                          onPressed: () => onEdit(entry.key),
-                          icon: const Icon(Icons.edit_outlined, size: 18),
+                        SizedBox(
+                          width: compact ? 76 : 96,
+                          child: Column(
+                            children: [
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  '${entry.value.totalPriceVnd.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => '.')}đ',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF475467),
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Sửa thông tin mặt hàng',
+                                onPressed: () => onEdit(entry.key),
+                                icon: const Icon(Icons.edit_outlined, size: 18),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
-            );
-          }),
-          Padding(
-            padding: const EdgeInsets.all(15),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Tổng giá trị đã chọn',
-                        style: TextStyle(fontSize: 10, color: _muted),
-                      ),
-                      Text(
-                        '${formattedTotal.isEmpty ? '0' : formattedTotal}đ',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                          color: _green,
-                        ),
-                      ),
-                    ],
                   ),
-                ),
-                OutlinedButton(
-                  onPressed: onReset,
-                  child: const Text('Quét lại'),
-                ),
-                const SizedBox(width: 8),
-                FilledButton.icon(
-                  onPressed: selected.isEmpty ? null : onConfirm,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Thêm vào tủ'),
-                ),
-              ],
-            ),
+                );
+              }),
+              Padding(
+                padding: const EdgeInsets.all(14),
+                child: compact
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Tổng giá trị đã chọn',
+                                style: TextStyle(fontSize: 10, color: _muted),
+                              ),
+                              Text(
+                                '${formattedTotal.isEmpty ? '0' : formattedTotal}đ',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                  color: _green,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: onReset,
+                                  child: const Text('Quét lại'),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                flex: 2,
+                                child: FilledButton.icon(
+                                  onPressed: selected.isEmpty
+                                      ? null
+                                      : onConfirm,
+                                  icon: const Icon(Icons.add),
+                                  label: const Text('Thêm vào tủ'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Tổng giá trị đã chọn',
+                                  style: TextStyle(fontSize: 10, color: _muted),
+                                ),
+                                Text(
+                                  '${formattedTotal.isEmpty ? '0' : formattedTotal}đ',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w900,
+                                    color: _green,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          OutlinedButton(
+                            onPressed: onReset,
+                            child: const Text('Quét lại'),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton.icon(
+                            onPressed: selected.isEmpty ? null : onConfirm,
+                            icon: const Icon(Icons.add),
+                            label: const Text('Thêm vào tủ'),
+                          ),
+                        ],
+                      ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -2525,68 +2625,6 @@ class _EditReceiptLineDialogState extends State<_EditReceiptLineDialog> {
         child: const Text('Lưu'),
       ),
     ],
-  );
-}
-
-class _Store extends StatelessWidget {
-  const _Store(this.icon, this.name);
-  final IconData icon;
-  final String name;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 7),
-    child: Row(
-      children: [
-        Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: const Color(0xFFE8FBF4),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, color: _green, size: 19),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          name,
-          style: const TextStyle(fontWeight: FontWeight.w600, color: _ink),
-        ),
-      ],
-    ),
-  );
-}
-
-class _RecentScan extends StatelessWidget {
-  const _RecentScan(this.name, this.date, this.price);
-  final String name, date, price;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 10),
-    child: Row(
-      children: [
-        const Icon(Icons.receipt_long_outlined, color: Colors.orange),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                name,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: _ink,
-                ),
-              ),
-              Text(date, style: const TextStyle(fontSize: 11, color: _muted)),
-            ],
-          ),
-        ),
-        Text(
-          price,
-          style: const TextStyle(fontWeight: FontWeight.w700, color: _ink),
-        ),
-      ],
-    ),
   );
 }
 
