@@ -11,5 +11,5 @@ Future<void> main() async {
   await AppServices.initialize();
   runApp(const VineatApp());
   // Hydrate after the first frame so the seeded demo opens instantly.
-  unawaited(restoreInventory());
+  unawaited(restoreLocalDemoData());
 }

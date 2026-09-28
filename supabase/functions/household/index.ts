@@ -75,6 +75,35 @@ Deno.serve(async (request: Request) => {
       params = { p_household_id: householdId };
       break;
     }
+    case "members": {
+      const householdId = typeof input.householdId === "string" ? input.householdId : "";
+      if (!/^[0-9a-f-]{36}$/i.test(householdId)) return json({ error: "Thiếu mã gia đình." }, 400);
+      rpcName = "list_household_members";
+      params = { p_household_id: householdId };
+      break;
+    }
+    case "set-role": {
+      const householdId = typeof input.householdId === "string" ? input.householdId : "";
+      const userId = typeof input.userId === "string" ? input.userId : "";
+      const role = input.role;
+      if (!/^[0-9a-f-]{36}$/i.test(householdId) || !/^[0-9a-f-]{36}$/i.test(userId)) {
+        return json({ error: "Thông tin thành viên không hợp lệ." }, 400);
+      }
+      if (role !== "adult" && role !== "member") return json({ error: "Vai trò không hợp lệ." }, 400);
+      rpcName = "set_household_member_role";
+      params = { p_household_id: householdId, p_user_id: userId, p_member_role: role };
+      break;
+    }
+    case "remove-member": {
+      const householdId = typeof input.householdId === "string" ? input.householdId : "";
+      const userId = typeof input.userId === "string" ? input.userId : "";
+      if (!/^[0-9a-f-]{36}$/i.test(householdId) || !/^[0-9a-f-]{36}$/i.test(userId)) {
+        return json({ error: "Thông tin thành viên không hợp lệ." }, 400);
+      }
+      rpcName = "remove_household_member";
+      params = { p_household_id: householdId, p_user_id: userId };
+      break;
+    }
     default:
       return json({ error: "Unsupported action" }, 400);
   }
@@ -98,5 +127,6 @@ Deno.serve(async (request: Request) => {
     });
   }
   if (action === "rotate") return json({ inviteCode: data });
+  if (action === "members") return json({ members: data ?? [] });
   return json({ success: data === true });
 });

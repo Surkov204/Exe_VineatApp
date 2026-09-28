@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_tutorial.dart';
+import 'app_services.dart';
 import 'auth_screens.dart';
 import 'household_data_repository.dart';
 import 'screens.dart';
@@ -72,9 +75,32 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell>
     with SingleTickerProviderStateMixin {
-  static const _tutorialSeenKey = 'vineat_tutorial_completed_v1';
+  static const _pageKeys = ['home', 'scan', 'recipes', 'shopping', 'reports'];
+  static const _pageTips = [
+    (
+      'Mẹo tủ lạnh',
+      'Thêm thực phẩm, theo dõi hạn dùng và mở một món để sửa hoặc ghi nhận đã dùng.',
+    ),
+    (
+      'Mẹo quét hóa đơn',
+      'Chụp hoặc chọn hóa đơn, rà lại từng dòng rồi mới xác nhận nhập vào tủ.',
+    ),
+    (
+      'Mẹo gợi ý món ăn',
+      'Tìm món theo nguyên liệu đang có; mở công thức để xem phần còn thiếu.',
+    ),
+    (
+      'Mẹo đi chợ',
+      'Thêm món cần mua. Đánh dấu đã mua để chuyển món vào tủ lạnh.',
+    ),
+    (
+      'Mẹo báo cáo',
+      'Số liệu phản ánh các lần thêm, dùng và bỏ thực phẩm đã xác nhận.',
+    ),
+  ];
   int _index = 0;
   int _transitionDirection = 1;
+  bool _showPageTip = false;
   late final AnimationController _tabTransition;
 
   static const _pages = [
@@ -93,19 +119,61 @@ class _AppShellState extends State<AppShell>
       duration: const Duration(milliseconds: 220),
       value: 1,
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) => _showFirstRunGuide());
+    tutorialPageRequest.addListener(_handleTutorialRequest);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _showTipIfNeeded(0));
   }
 
-  Future<void> _showFirstRunGuide() async {
+  void _handleTutorialRequest() {
+    final requested = tutorialPageRequest.value;
+    if (requested == null) return;
+    _selectTab(requested);
+    tutorialPageRequest.value = null;
+  }
+
+  Future<void> _showTipIfNeeded(int index) async {
     final preferences = await SharedPreferences.getInstance();
-    if (preferences.getBool(_tutorialSeenKey) == true || !mounted) return;
-    await showAppTutorial(context, onStepChanged: _selectTab);
-    await preferences.setBool(_tutorialSeenKey, true);
-    if (mounted) _selectTab(0);
+    var seen =
+        preferences.getBool('vineat_page_tutorial_${_pageKeys[index]}_v1') ??
+        false;
+    if (!seen && AppServices.configured) {
+      try {
+        seen = await HouseholdDataRepository.instance.isTutorialPageCompleted(
+          _pageKeys[index],
+        );
+        if (seen) {
+          await preferences.setBool(
+            'vineat_page_tutorial_${_pageKeys[index]}_v1',
+            true,
+          );
+        }
+      } catch (_) {
+        // Keep first-use help available even when the network is offline.
+      }
+    }
+    if (mounted && _index == index && !seen) {
+      setState(() => _showPageTip = true);
+    }
+  }
+
+  Future<void> _dismissPageTip() async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(
+      'vineat_page_tutorial_${_pageKeys[_index]}_v1',
+      true,
+    );
+    if (AppServices.configured) {
+      unawaited(
+        HouseholdDataRepository.instance
+            .markTutorialPageCompleted(_pageKeys[_index])
+            .catchError((_) {}),
+      );
+    }
+    if (mounted) setState(() => _showPageTip = false);
   }
 
   @override
   void dispose() {
+    tutorialPageRequest.removeListener(_handleTutorialRequest);
     _tabTransition.dispose();
     super.dispose();
   }
@@ -115,7 +183,9 @@ class _AppShellState extends State<AppShell>
     setState(() {
       _transitionDirection = value > _index ? 1 : -1;
       _index = value;
+      _showPageTip = false;
     });
+    _showTipIfNeeded(value);
     if (MediaQuery.of(context).disableAnimations) {
       _tabTransition.value = 1;
     } else {
@@ -175,6 +245,12 @@ class _AppShellState extends State<AppShell>
                     ),
                   ),
           ),
+          if (_showPageTip)
+            _PageCoachCard(
+              title: _pageTips[_index].$1,
+              description: _pageTips[_index].$2,
+              onDismiss: _dismissPageTip,
+            ),
           Expanded(
             child: Row(
               key: const ValueKey('app-body-row'),
@@ -214,7 +290,13 @@ class _AppShellState extends State<AppShell>
                   child: AnimatedBuilder(
                     animation: _tabTransition,
                     child: SizedBox.expand(
-                      child: IndexedStack(index: _index, children: _pages),
+                      child: IndexedStack(
+                        index: _index,
+                        children: [
+                          for (var i = 0; i < _pages.length; i++)
+                            TickerMode(enabled: i == _index, child: _pages[i]),
+                        ],
+                      ),
                     ),
                     builder: (context, child) {
                       final progress = Curves.easeOutCubic.transform(
@@ -271,6 +353,71 @@ class _AppShellState extends State<AppShell>
                 ),
               ],
             ),
+    );
+  }
+}
+
+class _PageCoachCard extends StatelessWidget {
+  const _PageCoachCard({
+    required this.title,
+    required this.description,
+    required this.onDismiss,
+  });
+
+  final String title;
+  final String description;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    return AnimatedSize(
+      duration: reduceMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 200),
+      curve: Curves.easeOutCubic,
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+        padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE8FBF4),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFC9F1E1)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.lightbulb_outline, color: Color(0xFF079669)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF253043),
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    description,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      height: 1.35,
+                      color: Color(0xFF586477),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 4),
+            TextButton(onPressed: onDismiss, child: const Text('Đã hiểu')),
+          ],
+        ),
+      ),
     );
   }
 }

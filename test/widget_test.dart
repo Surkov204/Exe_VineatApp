@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:vineat_app/main.dart' as app;
+import 'package:vineat_app/src/app.dart' show VineatApp;
 import 'package:vineat_app/src/food_detail.dart' show FoodDetailScreen;
 import 'package:vineat_app/src/inventory_store.dart';
+import 'package:vineat_app/src/profile_screen.dart' show ProfileScreen;
 import 'package:vineat_app/src/screens.dart' show FridgeScreen;
 
 void setTestViewport(WidgetTester tester, Size size) {
@@ -18,35 +19,57 @@ void setTestViewport(WidgetTester tester, Size size) {
 }
 
 void main() {
-  setUp(() {
+  setUp(() async {
     SharedPreferences.setMockInitialValues({
       'vineat_tutorial_completed_v1': true,
+      'vineat_page_tutorial_home_v1': true,
+      'vineat_page_tutorial_scan_v1': true,
+      'vineat_page_tutorial_recipes_v1': true,
+      'vineat_page_tutorial_shopping_v1': true,
+      'vineat_page_tutorial_reports_v1': true,
     });
+    await resetDemoInventory();
+    await resetDemoShopping();
   });
 
-  testWidgets('first-run guide walks through each app tab', (tester) async {
+  testWidgets('first visit tips stay in layout and guide each app tab', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
     setTestViewport(tester, const Size(360, 640));
 
-    app.main();
+    await tester.pumpWidget(const VineatApp());
     await tester.pumpAndSettle();
-    expect(find.text('Bắt đầu với ViNeat'), findsOneWidget);
+    expect(find.text('Bắt đầu với ViNeat'), findsNothing);
+    expect(find.text('Mẹo tủ lạnh'), findsOneWidget);
+    await tester.tap(find.text('Đã hiểu'));
+    await tester.pumpAndSettle();
 
-    for (var index = 1; index < 5; index++) {
-      await tester.tap(find.text('Tiếp'));
+    const tabs = ['Scan', 'Món ăn', 'Đi chợ', 'Báo cáo'];
+    const tips = [
+      'Mẹo quét hóa đơn',
+      'Mẹo gợi ý món ăn',
+      'Mẹo đi chợ',
+      'Mẹo báo cáo',
+    ];
+    for (var index = 0; index < tabs.length; index++) {
+      await tester.tap(find.text(tabs[index]));
+      await tester.pumpAndSettle();
+      expect(find.text(tips[index]), findsOneWidget);
+      await tester.tap(find.text('Đã hiểu'));
       await tester.pumpAndSettle();
       expect(
         tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
-        index,
+        index + 1,
       );
     }
-    expect(find.text('Báo cáo'), findsNWidgets(2));
-    await tester.tap(find.text('Bắt đầu sử dụng'));
+    expect(find.text('Báo cáo'), findsOneWidget);
+    await tester.tap(find.text('Trang chủ'));
     await tester.pumpAndSettle();
     expect(find.text('Tủ lạnh của bạn'), findsOneWidget);
     expect(
       (await SharedPreferences.getInstance()).getBool(
-        'vineat_tutorial_completed_v1',
+        'vineat_page_tutorial_home_v1',
       ),
       isTrue,
     );
@@ -54,7 +77,7 @@ void main() {
   });
 
   testWidgets('renders the five-screen ViNeat shell', (tester) async {
-    app.main();
+    await tester.pumpWidget(const VineatApp());
     await tester.pumpAndSettle();
 
     expect(find.text('Tủ lạnh của bạn'), findsOneWidget);
@@ -89,7 +112,7 @@ void main() {
   testWidgets('keeps tabs separated on a compact phone', (tester) async {
     setTestViewport(tester, const Size(360, 640));
 
-    app.main();
+    await tester.pumpWidget(const VineatApp());
     await tester.pumpAndSettle();
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(find.byType(NavigationRail), findsNothing);
@@ -116,10 +139,83 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('fridge priority chip filters without covering home content', (
+    tester,
+  ) async {
+    setTestViewport(tester, const Size(320, 568));
+
+    await tester.pumpWidget(const VineatApp());
+    await tester.pumpAndSettle();
+
+    final priorityChip = find.ancestor(
+      of: find.text('3 cần ưu tiên'),
+      matching: find.byType(InkWell),
+    );
+    expect(priorityChip.hitTestable(), findsOneWidget);
+    await tester.tap(priorityChip);
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView).first, const Offset(0, -420));
+    await tester.pumpAndSettle();
+    expect(find.text('Món cần ưu tiên'), findsOneWidget);
+    expect(find.text('Cà chua'), findsNothing);
+    expect(find.text('Cá basa fillet'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text('Bỏ lọc'));
+    await tester.pumpAndSettle();
+    expect(find.text('Cà chua'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('profile and family settings fit a compact phone', (
+    tester,
+  ) async {
+    setTestViewport(tester, const Size(320, 568));
+
+    await tester.pumpWidget(const VineatApp());
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.person_outline).first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cài đặt'), findsOneWidget);
+    expect(find.text('Hồ sơ cá nhân'), findsOneWidget);
+    final profileList = find.descendant(
+      of: find.byType(ProfileScreen),
+      matching: find.byType(ListView),
+    );
+    expect(profileList, findsOneWidget);
+    await tester.drag(profileList, const Offset(0, -720));
+    await tester.pumpAndSettle();
+    expect(find.text('Gia đình'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  test('household cache is not reused as local demo import data', () async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      'vineat.household_cache_scope.v1',
+      'previous-user:previous-household',
+    );
+    inventoryFoods.insert(0, (
+      'Dữ liệu riêng của gia đình cũ',
+      '1 phần · 10đ',
+      'Tươi ngon',
+      0,
+    ));
+    addTearDown(() => inventoryFoods.removeAt(0));
+
+    final preview = await localDemoPreviewSnapshot();
+    expect(preview.length, demoInventorySeed.length);
+    expect(
+      preview.any((food) => food.$1 == 'Dữ liệu riêng của gia đình cũ'),
+      isFalse,
+    );
+  });
+
   testWidgets('supports add-to-shopping flow and 320dp layout', (tester) async {
     setTestViewport(tester, const Size(320, 568));
 
-    app.main();
+    await tester.pumpWidget(const VineatApp());
     await tester.pumpAndSettle();
     await tester.tap(find.text('Đi chợ'));
     await tester.pumpAndSettle();
@@ -145,22 +241,22 @@ void main() {
   ) async {
     setTestViewport(tester, const Size(900, 800));
 
-    app.main();
-    await tester.pumpAndSettle();
+    await tester.pumpWidget(const VineatApp());
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(NavigationRail), findsOneWidget);
     expect(find.byType(NavigationBar), findsNothing);
 
     await tester.tap(find.text('Báo cáo'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Giá trị thực phẩm đang theo dõi'), findsOneWidget);
     await tester.tap(find.text('Trang chủ'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Tủ lạnh của bạn'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('add food dialog offers image selection', (tester) async {
-    app.main();
+    await tester.pumpWidget(const VineatApp());
     await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(Icons.add));
@@ -175,7 +271,7 @@ void main() {
     tester,
   ) async {
     setTestViewport(tester, const Size(360, 640));
-    app.main();
+    await tester.pumpWidget(const VineatApp());
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Đi chợ'));
@@ -193,15 +289,14 @@ void main() {
     tester,
   ) async {
     setTestViewport(tester, const Size(393, 852));
-    app.main();
+    await tester.pumpWidget(const VineatApp());
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Món ăn'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Mì cay trứng lòng đào').first);
     await tester.pumpAndSettle();
-    final addMissingIngredients =
-        find.textContaining('món thiếu vào đi chợ');
+    final addMissingIngredients = find.textContaining('món thiếu vào đi chợ');
     await tester.ensureVisible(addMissingIngredients);
     await tester.pumpAndSettle();
     await tester.tap(addMissingIngredients);
@@ -215,7 +310,7 @@ void main() {
     tester,
   ) async {
     setTestViewport(tester, const Size(393, 852));
-    app.main();
+    await tester.pumpWidget(const VineatApp());
     await tester.pumpAndSettle();
     await tester.tap(find.text('Trang chủ').last);
     await tester.pumpAndSettle();

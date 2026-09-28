@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+/// Used by the shell to keep the selected tab in sync with the replay tour.
+final tutorialPageRequest = ValueNotifier<int?>(null);
+
 const _tutorialPages = <_TutorialPage>[
   _TutorialPage(
     title: 'Tủ lạnh',

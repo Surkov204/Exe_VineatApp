@@ -69,6 +69,18 @@ class Household {
   );
 }
 
+class HouseholdMember {
+  const HouseholdMember({
+    required this.userId,
+    required this.displayName,
+    required this.role,
+  });
+
+  final String userId;
+  final String displayName;
+  final String role;
+}
+
 /// Households are fetched from membership rows; the active household is a
 /// device preference, while all household data remains protected by RLS.
 class HouseholdService {
@@ -148,6 +160,44 @@ class HouseholdService {
   Future<void> leave(String householdId) async {
     await _invoke('leave', {'householdId': householdId});
     if (active.value?.id == householdId) await select(null);
+  }
+
+  Future<List<HouseholdMember>> listMembers(String householdId) async {
+    final data = await _invoke('members', {'householdId': householdId});
+    final rows = data['members'];
+    if (rows is! List) return const [];
+    return rows
+        .whereType<Map>()
+        .map(
+          (row) => HouseholdMember(
+            userId: row['user_id'] as String? ?? '',
+            displayName: row['display_name'] as String? ?? 'Thành viên',
+            role: row['member_role'] as String? ?? 'member',
+          ),
+        )
+        .toList();
+  }
+
+  Future<void> setMemberRole({
+    required String householdId,
+    required String userId,
+    required String role,
+  }) async {
+    await _invoke('set-role', {
+      'householdId': householdId,
+      'userId': userId,
+      'role': role,
+    });
+  }
+
+  Future<void> removeMember({
+    required String householdId,
+    required String userId,
+  }) async {
+    await _invoke('remove-member', {
+      'householdId': householdId,
+      'userId': userId,
+    });
   }
 
   Future<Map<String, dynamic>> _invoke(

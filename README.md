@@ -49,7 +49,9 @@ local, ký debug; không dùng để phát hành cửa hàng.
    secret vào app hay build arguments.
 
 Khi đã cấu hình, app dùng email OTP/Google, tạo hoặc tham gia gia đình bằng mã,
-chọn gia đình đang hoạt động và đồng bộ tủ lạnh/đi chợ/sự kiện qua Supabase.
+chọn gia đình đang hoạt động, xem/quản lý vai trò thành viên, và đồng bộ
+tủ lạnh/đi chợ/sự kiện qua Supabase. Khi một gia đình mới chưa có kho, mỗi gia
+đình chỉ được hỏi một lần để xem trước rồi nhập dữ liệu mẫu hoặc bắt đầu tủ trống.
 RLS giới hạn dữ liệu theo thành viên; ảnh gia đình nằm trong storage bucket private.
 Không có credentials của project trong repository, vì vậy chưa thể xác minh luồng
 đăng nhập và đồng bộ trên project hosted chỉ bằng bộ test local.
@@ -69,13 +71,15 @@ trong báo cáo chỉ xuất hiện sau thao tác xác nhận, không giả làm
 - Bố cục mobile dùng thanh tab cố định; màn hình rộng chuyển qua navigation rail.
   Các trang giữ trạng thái khi đổi tab, nội dung cuộn trong vùng riêng và chuyển tab
   bằng hiệu ứng ngắn, tự tắt khi thiết bị bật giảm chuyển động.
-- Hướng dẫn 5 bước xuất hiện lần đầu và có thể mở lại từ Hồ sơ → Trợ giúp.
+- Mỗi trang có thẻ hướng dẫn gọn ở lần đầu truy cập; tour 5 bước có thể mở lại từ
+  Hồ sơ → Trợ giúp. Tiến độ từng trang lưu cục bộ và đồng bộ khi tài khoản online.
 - Danh mục món ăn/công thức hiện là catalog cục bộ; phần gợi ý kiểm tra nguyên liệu
   từ tủ lạnh và nút thêm nguyên liệu thiếu vào danh sách đi chợ.
 - OCR xử lý ảnh trên thiết bị. Các dòng đã xác nhận có thể nhập vào kho local hoặc
   household đã đăng nhập; chưa có job OCR nền hay quản trị lịch sử hóa đơn đầy đủ.
-- Chưa có asset 3D được cấp phép trong source, nên bản hiện tại không giả lập tính
-  năng mô hình tủ lạnh 3D. Hiệu ứng ưu tiên nhẹ để không làm chậm thiết bị.
+- Chưa có file GLB gốc được cấp phép trong source. Màn đăng nhập và Trang chủ dùng
+  hình tủ lạnh phối cảnh dựng native bằng Flutter làm fallback nhẹ, không tải WebView
+  hay giả nhận đó là mô hình GLB. Cần cung cấp GLB nếu muốn thay bằng model 3D thật.
 - File Proposal và backend riêng không có trong workspace hiện tại. Schema trong
   `supabase/migrations/` được dựng theo luồng hiện có của ứng dụng và cần đối chiếu
   Proposal/backend gốc trước khi coi là schema production.

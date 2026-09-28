@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app.dart';
 import 'app_services.dart';
 import 'household_data_repository.dart';
+import 'fridge_showcase.dart';
 import 'inventory_store.dart';
 
 const _green = Color(0xFF079669);
@@ -41,8 +42,51 @@ class AppEntry extends StatelessWidget {
 class _AuthSplash extends StatelessWidget {
   const _AuthSplash();
   @override
-  Widget build(BuildContext context) =>
-      const Scaffold(body: Center(child: CircularProgressIndicator()));
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: const Color(0xFFF7FBF9),
+    body: SafeArea(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 390),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SmartFridgeShowcase(
+                  inventoryCount: 3,
+                  expiringCount: 1,
+                  height: 190,
+                  preview: true,
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Đang chuẩn bị căn bếp của bạn',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w800,
+                    color: _ink,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'ViNeat đang khôi phục phiên đăng nhập an toàn.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Color(0xFF667085)),
+                ),
+                const SizedBox(height: 22),
+                const SizedBox(
+                  width: 150,
+                  child: LinearProgressIndicator(minHeight: 4, color: _green),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class _StartupError extends StatelessWidget {
@@ -199,68 +243,11 @@ class _LoginScreenState extends State<LoginScreen> {
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 28),
               children: [
                 const SizedBox(height: 16),
-                Container(
-                  height: 230,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFE8FBF4), Color(0xFFD4F5E8)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(32),
-                  ),
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Positioned(
-                        right: 24,
-                        top: 24,
-                        child: Icon(
-                          Icons.eco_outlined,
-                          size: 74,
-                          color: _green.withValues(alpha: .1),
-                        ),
-                      ),
-                      Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            width: 74,
-                            height: 74,
-                            decoration: BoxDecoration(
-                              color: _green,
-                              borderRadius: BorderRadius.circular(24),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: _green.withValues(alpha: .22),
-                                  blurRadius: 24,
-                                  offset: const Offset(0, 12),
-                                ),
-                              ],
-                            ),
-                            child: const Icon(
-                              Icons.eco,
-                              color: Colors.white,
-                              size: 38,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'ViNeat',
-                            style: TextStyle(
-                              fontSize: 30,
-                              fontWeight: FontWeight.w900,
-                              color: _ink,
-                            ),
-                          ),
-                          const Text(
-                            'Bếp gọn hơn, bữa ăn vui hơn',
-                            style: TextStyle(color: Color(0xFF667085)),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                const SmartFridgeShowcase(
+                  inventoryCount: 3,
+                  expiringCount: 1,
+                  height: 210,
+                  preview: true,
                 ),
                 const SizedBox(height: 28),
                 const Text(
@@ -434,6 +421,10 @@ class HouseholdGate extends StatefulWidget {
 
 class _HouseholdGateState extends State<HouseholdGate> {
   late Future<List<Household>> _households;
+  List<FoodSummary>? _pendingDemoImport;
+  String? _demoHouseholdId;
+  String? _demoImportError;
+  bool _demoImportBusy = false;
 
   @override
   void initState() {
@@ -442,13 +433,77 @@ class _HouseholdGateState extends State<HouseholdGate> {
   }
 
   Future<List<Household>> _prepareHouseholdData() async {
+    await restoreLocalDemoData();
+    final localDemo = await localDemoPreviewSnapshot();
     final households = await HouseholdService.instance.restoreActive();
     if (households.isEmpty) {
+      _pendingDemoImport = null;
       replaceInventoryFromRemote(records: const [], events: const []);
       replaceShoppingFromRemote(items: const [], checked: const {});
       return households;
     }
     try {
+      final snapshot = await HouseholdDataRepository.instance
+          .loadActiveHousehold();
+      final householdId = HouseholdService.instance.active.value?.id;
+      if (snapshot.inventory.isEmpty &&
+          householdId != null &&
+          localDemo.isNotEmpty &&
+          !await HouseholdDataRepository.instance.hasImportedDemoInventory(
+            householdId,
+          )) {
+        _pendingDemoImport = localDemo;
+        _demoHouseholdId = householdId;
+        return households;
+      }
+      _pendingDemoImport = null;
+      _demoHouseholdId = null;
+      replaceInventoryFromRemote(
+        records: snapshot.inventory,
+        events: snapshot.events,
+      );
+      replaceShoppingFromRemote(
+        items: snapshot.shopping.map((item) => item.item).toList(),
+        checked: snapshot.shopping
+            .asMap()
+            .entries
+            .where((entry) => entry.value.checked)
+            .map((entry) => entry.key)
+            .toSet(),
+      );
+    } catch (_) {
+      _pendingDemoImport = null;
+      replaceInventoryFromRemote(records: const [], events: const []);
+      replaceShoppingFromRemote(items: const [], checked: const {});
+      HouseholdDataRepository.instance.syncStatus.value =
+          'Chưa tải được dữ liệu gia đình. Kiểm tra kết nối và mở lại tab Hồ sơ để thử lại.';
+    }
+    return households;
+  }
+
+  void _refresh() => setState(() {
+    _households = _prepareHouseholdData();
+  });
+
+  Future<void> _finishDemoImport({required bool import}) async {
+    final householdId = _demoHouseholdId;
+    final localDemo = _pendingDemoImport;
+    if (_demoImportBusy || householdId == null || localDemo == null) return;
+    setState(() {
+      _demoImportBusy = true;
+      _demoImportError = null;
+    });
+    try {
+      final records = import
+          ? localDemo.map(InventoryItemRecord.fromSummary).toList()
+          : const <InventoryItemRecord>[];
+      await HouseholdDataRepository.instance.importDemoInventory(
+        householdId: householdId,
+        items: records,
+      );
+      if (HouseholdService.instance.active.value?.id != householdId) {
+        throw StateError('The active household changed during import.');
+      }
       final snapshot = await HouseholdDataRepository.instance
           .loadActiveHousehold();
       replaceInventoryFromRemote(
@@ -464,18 +519,23 @@ class _HouseholdGateState extends State<HouseholdGate> {
             .map((entry) => entry.key)
             .toSet(),
       );
+      if (mounted) {
+        setState(() {
+          _pendingDemoImport = null;
+          _demoHouseholdId = null;
+        });
+      }
     } catch (_) {
-      replaceInventoryFromRemote(records: const [], events: const []);
-      replaceShoppingFromRemote(items: const [], checked: const {});
-      HouseholdDataRepository.instance.syncStatus.value =
-          'Chưa tải được dữ liệu gia đình. Kiểm tra kết nối và mở lại tab Hồ sơ để thử lại.';
+      if (mounted) {
+        setState(
+          () => _demoImportError =
+              'Chưa lưu được lựa chọn. Dữ liệu mẫu trên thiết bị vẫn còn; hãy thử lại khi có mạng.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _demoImportBusy = false);
     }
-    return households;
   }
-
-  void _refresh() => setState(() {
-    _households = _prepareHouseholdData();
-  });
 
   @override
   Widget build(BuildContext context) => FutureBuilder<List<Household>>(
@@ -485,11 +545,151 @@ class _HouseholdGateState extends State<HouseholdGate> {
         return _HouseholdSetup(onChanged: _refresh, initialError: true);
       }
       if (!snapshot.hasData) {
-        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        return const _AuthSplash();
+      }
+      if (_pendingDemoImport != null) {
+        return _DemoImportChoice(
+          items: _pendingDemoImport!,
+          busy: _demoImportBusy,
+          error: _demoImportError,
+          onImport: () => _finishDemoImport(import: true),
+          onStartEmpty: () => _finishDemoImport(import: false),
+        );
       }
       if (snapshot.data!.isEmpty) return _HouseholdSetup(onChanged: _refresh);
       return const AppShell();
     },
+  );
+}
+
+class _DemoImportChoice extends StatelessWidget {
+  const _DemoImportChoice({
+    required this.items,
+    required this.busy,
+    required this.onImport,
+    required this.onStartEmpty,
+    this.error,
+  });
+
+  final List<FoodSummary> items;
+  final bool busy;
+  final String? error;
+  final VoidCallback onImport;
+  final VoidCallback onStartEmpty;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: const Color(0xFFF7FBF9),
+    appBar: AppBar(title: const Text('Dữ liệu ban đầu')),
+    body: Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            const Icon(Icons.inventory_2_outlined, size: 54, color: _green),
+            const SizedBox(height: 14),
+            const Text(
+              'Bạn muốn bắt đầu như thế nào?',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+                color: _ink,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Tủ lạnh mẫu trên thiết bị có ${items.length} món. Bạn có thể nhập một lần vào gia đình này để mọi thành viên cùng xem, hoặc bắt đầu với tủ trống. Lựa chọn này không thể lặp lại.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(height: 1.45, color: Color(0xFF667085)),
+            ),
+            const SizedBox(height: 18),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Xem trước dữ liệu',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 10),
+                    ...items
+                        .take(5)
+                        .map(
+                          (item) => Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 5),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.eco_outlined,
+                                  size: 17,
+                                  color: _green,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    item.$1,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Text(
+                                  item.$2,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF667085),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    if (items.length > 5)
+                      Text(
+                        'và ${items.length - 5} món khác',
+                        style: const TextStyle(color: Color(0xFF667085)),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            if (error != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.redAccent),
+              ),
+            ],
+            const SizedBox(height: 18),
+            SizedBox(
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: busy ? null : onImport,
+                icon: busy
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.download_done_outlined),
+                label: const Text('Nhập dữ liệu mẫu vào gia đình'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: busy ? null : onStartEmpty,
+              child: const Text('Bắt đầu với tủ trống'),
+            ),
+          ],
+        ),
+      ),
+    ),
   );
 }
 

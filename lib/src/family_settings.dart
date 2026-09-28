@@ -17,6 +17,7 @@ class FamilySettings extends StatefulWidget {
 
 class _FamilySettingsState extends State<FamilySettings> {
   List<Household> _households = const [];
+  List<HouseholdMember> _members = const [];
   bool _loading = true;
   bool _busy = false;
   String? _error;
@@ -37,10 +38,15 @@ class _FamilySettingsState extends State<FamilySettings> {
     replaceShoppingFromRemote(items: const [], checked: const {});
     try {
       final households = await HouseholdService.instance.restoreActive();
+      List<HouseholdMember> members = const [];
       if (households.isEmpty) {
         replaceInventoryFromRemote(records: const [], events: const []);
         replaceShoppingFromRemote(items: const [], checked: const {});
       } else {
+        final active = HouseholdService.instance.active.value;
+        if (active != null) {
+          members = await HouseholdService.instance.listMembers(active.id);
+        }
         final snapshot = await HouseholdDataRepository.instance
             .loadActiveHousehold();
         replaceInventoryFromRemote(
@@ -60,6 +66,7 @@ class _FamilySettingsState extends State<FamilySettings> {
       if (!mounted) return;
       setState(() {
         _households = households;
+        _members = members;
         _loading = false;
         _error = null;
       });
@@ -250,6 +257,64 @@ class _FamilySettingsState extends State<FamilySettings> {
     });
   }
 
+  Future<void> _changeMemberRole(HouseholdMember member, String role) async {
+    final household = HouseholdService.instance.active.value;
+    if (household == null) return;
+    await _mutate(() async {
+      await HouseholdService.instance.setMemberRole(
+        householdId: household.id,
+        userId: member.userId,
+        role: role,
+      );
+      await _load();
+    });
+  }
+
+  Future<void> _removeMember(HouseholdMember member) async {
+    final household = HouseholdService.instance.active.value;
+    if (household == null) return;
+    final name = _memberName(member);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xóa thành viên khỏi gia đình?'),
+        content: Text('$name sẽ không còn xem được dữ liệu của gia đình này.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Xóa thành viên'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _mutate(() async {
+      await HouseholdService.instance.removeMember(
+        householdId: household.id,
+        userId: member.userId,
+      );
+      await _load();
+    });
+  }
+
+  String _memberName(HouseholdMember member) {
+    if (member.userId == AppServices.client.auth.currentUser?.id) return 'Bạn';
+    if (member.displayName.trim().isNotEmpty && member.displayName != 'Bạn') {
+      return member.displayName;
+    }
+    return 'Thành viên · ${member.userId.substring(0, 6).toUpperCase()}';
+  }
+
+  String _roleLabel(String role) => switch (role) {
+    'owner' => 'Chủ gia đình',
+    'adult' => 'Người lớn',
+    _ => 'Thành viên',
+  };
+
   @override
   Widget build(BuildContext context) {
     if (!AppServices.configured) {
@@ -351,6 +416,105 @@ class _FamilySettingsState extends State<FamilySettings> {
                     ),
                 ],
               ),
+            ),
+          ],
+          if (active != null && _members.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Thành viên',
+                    style: TextStyle(fontWeight: FontWeight.w800, color: _ink),
+                  ),
+                ),
+                Text(
+                  '${_members.length} người',
+                  style: const TextStyle(fontSize: 11, color: _muted),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ..._members.map((member) {
+              final isOwner = member.role == 'owner';
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 17,
+                      backgroundColor: const Color(0xFFE8FBF4),
+                      child: Icon(
+                        isOwner
+                            ? Icons.workspace_premium_outlined
+                            : Icons.person_outline,
+                        size: 18,
+                        color: _green,
+                      ),
+                    ),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _memberName(member),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: _ink,
+                            ),
+                          ),
+                          Text(
+                            _roleLabel(member.role),
+                            style: const TextStyle(fontSize: 11, color: _muted),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (active.role == 'owner' && !isOwner)
+                      PopupMenuButton<String>(
+                        tooltip: 'Quản lý thành viên',
+                        enabled: !_busy,
+                        onSelected: (value) {
+                          if (value == 'remove') {
+                            _removeMember(member);
+                          } else {
+                            _changeMemberRole(member, value);
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          PopupMenuItem(
+                            value: 'adult',
+                            child: Text(
+                              member.role == 'adult'
+                                  ? '✓ Người lớn'
+                                  : 'Đặt vai trò Người lớn',
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'member',
+                            child: Text(
+                              member.role == 'member'
+                                  ? '✓ Thành viên'
+                                  : 'Đặt vai trò Thành viên',
+                            ),
+                          ),
+                          const PopupMenuDivider(),
+                          const PopupMenuItem(
+                            value: 'remove',
+                            child: Text('Xóa khỏi gia đình'),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              );
+            }),
+            const Text(
+              'Email cá nhân không được hiển thị trong danh sách gia đình.',
+              style: TextStyle(fontSize: 10, color: _muted),
             ),
           ],
           if (active != null && active.role != 'owner')
