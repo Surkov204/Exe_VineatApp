@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,7 +21,7 @@ void setTestViewport(WidgetTester tester, Size size) {
 }
 
 void main() {
-  setUp(() async {
+  setUp(() {
     SharedPreferences.setMockInitialValues({
       'vineat_tutorial_completed_v1': true,
       'vineat_page_tutorial_home_v1': true,
@@ -28,8 +30,10 @@ void main() {
       'vineat_page_tutorial_shopping_v1': true,
       'vineat_page_tutorial_reports_v1': true,
     });
-    await resetDemoInventory();
-    await resetDemoShopping();
+    // These helpers reset in-memory fixtures synchronously. Their queued
+    // SharedPreferences cleanup must not hold the next widget test open.
+    unawaited(resetDemoInventory());
+    unawaited(resetDemoShopping());
   });
 
   testWidgets('first visit tips stay in layout and guide each app tab', (
@@ -234,6 +238,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Giá trị thực phẩm đang theo dõi'), findsOneWidget);
     expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
   });
 
   testWidgets('uses a side rail on tablet widths and returns home', (
