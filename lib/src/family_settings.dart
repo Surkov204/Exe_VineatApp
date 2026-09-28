@@ -79,19 +79,21 @@ class _FamilySettingsState extends State<FamilySettings> {
   }
 
   Future<void> _switchHousehold(String? id) async {
+    if (_busy || _loading) return;
     final selected = _households
         .where((household) => household.id == id)
         .firstOrNull;
-    await HouseholdService.instance.select(selected);
+    setState(() {
+      _busy = true;
+      _loading = true;
+      _error = null;
+    });
     replaceInventoryFromRemote(records: const [], events: const []);
     replaceShoppingFromRemote(items: const [], checked: const {});
-    if (mounted) {
-      setState(() {
-        _loading = true;
-        _error = null;
-      });
-    }
     try {
+      await HouseholdDataRepository.instance.runWithHouseholdRealtimePaused(
+        () => HouseholdService.instance.select(selected),
+      );
       final snapshot = await HouseholdDataRepository.instance
           .loadActiveHousehold();
       replaceInventoryFromRemote(
@@ -112,7 +114,12 @@ class _FamilySettingsState extends State<FamilySettings> {
       HouseholdDataRepository.instance.syncStatus.value =
           'Chưa tải được gia đình. Dữ liệu cũ đã được ẩn để tránh hiển thị nhầm; hãy thử lại.';
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _busy = false;
+        });
+      }
     }
   }
 
@@ -147,7 +154,11 @@ class _FamilySettingsState extends State<FamilySettings> {
     controller.dispose();
     if (code == null || code.isEmpty || !mounted) return;
     await _mutate(() async {
-      await HouseholdService.instance.join(code);
+      await HouseholdDataRepository.instance.runWithHouseholdRealtimePaused(
+        () async {
+          await HouseholdService.instance.join(code);
+        },
+      );
       await _load();
     });
   }
@@ -179,7 +190,11 @@ class _FamilySettingsState extends State<FamilySettings> {
     controller.dispose();
     if (name == null || name.isEmpty || !mounted) return;
     await _mutate(() async {
-      await HouseholdService.instance.create(name);
+      await HouseholdDataRepository.instance.runWithHouseholdRealtimePaused(
+        () async {
+          await HouseholdService.instance.create(name);
+        },
+      );
       await _load();
     });
   }
@@ -248,7 +263,9 @@ class _FamilySettingsState extends State<FamilySettings> {
     );
     if (confirmed != true || !mounted) return;
     await _mutate(() async {
-      await HouseholdService.instance.leave(household.id);
+      await HouseholdDataRepository.instance.runWithHouseholdRealtimePaused(
+        () => HouseholdService.instance.leave(household.id),
+      );
       await _load();
     });
   }

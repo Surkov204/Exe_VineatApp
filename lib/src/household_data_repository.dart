@@ -246,6 +246,51 @@ class HouseholdDataRepository {
     channel.subscribe();
   }
 
+  /// Serializes household mutations with realtime teardown. The old channel is
+  /// invalidated and its unsubscribe is awaited before the caller can fetch a
+  /// new snapshot. If the mutation fails, the active household listener returns.
+  Future<void> runWithHouseholdRealtimePaused(
+    Future<void> Function() action,
+  ) async {
+    await _pauseHouseholdRealtime();
+    try {
+      await action();
+    } catch (_) {
+      await _resumeActiveHouseholdRealtime();
+      rethrow;
+    }
+    await _resumeActiveHouseholdRealtime();
+  }
+
+  Future<void> _pauseHouseholdRealtime() async {
+    ++_realtimeGeneration;
+    _realtimeRefreshTimer?.cancel();
+    _realtimeRefreshTimer = null;
+    _refreshAgain = false;
+    final previous = _realtimeChannel;
+    _realtimeChannel = null;
+    _realtimeHouseholdId = null;
+    if (previous == null || !AppServices.configured) return;
+    try {
+      await AppServices.client.removeChannel(previous);
+    } catch (_) {
+      // The generation guard above prevents a late old-channel event from
+      // updating the current household even if the server unsubscribe fails.
+    }
+  }
+
+  Future<void> _resumeActiveHouseholdRealtime() async {
+    final householdId = _householdId;
+    final onSnapshot = _onRealtimeSnapshot;
+    if (!AppServices.configured || householdId == null || onSnapshot == null) {
+      return;
+    }
+    await watchHouseholdChanges(
+      householdId: householdId,
+      onSnapshot: onSnapshot,
+    );
+  }
+
   void _scheduleRealtimeRefresh(int generation) {
     if (generation != _realtimeGeneration) return;
     _realtimeRefreshTimer?.cancel();
