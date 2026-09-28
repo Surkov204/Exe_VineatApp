@@ -331,6 +331,34 @@ class _AppShellState extends State<AppShell>
                         ),
                       ),
               ),
+              if (!AppServices.configured)
+                Material(
+                  color: const Color(0xFFEAF5FF),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 7, 14, 7),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.info_outline,
+                          size: 17,
+                          color: Color(0xFF366A91),
+                        ),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Demo ngoại tuyến · dữ liệu mẫu chỉ lưu trên thiết bị, chưa đồng bộ gia đình.',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF345B78),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               Expanded(
                 child: Row(
                   key: const ValueKey('app-body-row'),

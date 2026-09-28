@@ -146,6 +146,7 @@ void main() {
     expect(find.text('Món ăn'), findsOneWidget);
     expect(find.text('Đi chợ'), findsOneWidget);
     expect(find.text('Báo cáo'), findsOneWidget);
+    expect(find.textContaining('Demo ngoại tuyến'), findsOneWidget);
 
     await tester.tap(find.text('Scan'));
     await tester.pumpAndSettle();
