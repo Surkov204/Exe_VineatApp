@@ -396,6 +396,73 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('login stays usable with enlarged text and keyboard open', (
+    tester,
+  ) async {
+    setTestViewport(tester, const Size(360, 640));
+    tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('Email của bạn'),
+      180,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView).first,
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    final email = find.byType(TextField).first;
+    await tester.enterText(email, 'demo@example.test');
+    tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pumpAndSettle();
+    final continueButton = find.text('Tiếp tục bằng email');
+    await tester.scrollUntilVisible(
+      continueButton,
+      180,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView).first,
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+
+    expect(continueButton.hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('mobile navigation remains usable at 150% system text', (
+    tester,
+  ) async {
+    setTestViewport(tester, const Size(320, 568));
+    tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await tester.pumpWidget(const VineatApp());
+    await tester.pumpAndSettle();
+
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(
+      tester.widget<NavigationBar>(find.byType(NavigationBar)).labelBehavior,
+      NavigationDestinationLabelBehavior.onlyShowSelected,
+    );
+    expect(find.text('Trang chủ').last.hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byIcon(Icons.shopping_basket_outlined).last);
+    await tester.pumpAndSettle();
+    expect(find.text('Danh sách đi chợ'), findsOneWidget);
+    expect(find.text('Thêm món').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('keeps tabs separated on a compact phone', (tester) async {
     setTestViewport(tester, const Size(360, 640));
 
@@ -481,6 +548,77 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Cà chua'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('long inventory remains reachable above the fixed navigation', (
+    tester,
+  ) async {
+    setTestViewport(tester, const Size(320, 568));
+    final stressFoods = List.generate(
+      36,
+      (index) => FoodSummary(
+        name: 'Thực phẩm dài ${index + 1}',
+        quantity: 1,
+        unit: 'phần',
+        priceVnd: 1000,
+        imageIndex: index % 8,
+      ),
+    );
+    addTearDown(resetDemoInventory);
+
+    // Seed the in-memory fixture in one batch so this layout-only test does
+    // not enqueue 36 persistence or household-sync operations.
+    inventoryFoods.addAll(stressFoods);
+    inventoryRevision.value++;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: const FridgeScreen(),
+          bottomNavigationBar: NavigationBar(
+            selectedIndex: 0,
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.home),
+                label: 'Trang chủ',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.document_scanner),
+                label: 'Scan',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.restaurant_menu),
+                label: 'Món ăn',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.shopping_basket),
+                label: 'Đi chợ',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.bar_chart),
+                label: 'Báo cáo',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final lastFood = find.text('Thực phẩm dài 36');
+    final fridgeList = find.descendant(
+      of: find.byType(FridgeScreen),
+      matching: find.byType(ListView),
+    ).first;
+    expect(find.byType(FridgeScreen), findsOneWidget);
+    for (var attempt = 0; attempt < 20; attempt++) {
+      if (lastFood.hitTestable().evaluate().isNotEmpty) break;
+      await tester.drag(fridgeList, const Offset(0, -350));
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    expect(find.text('Thực phẩm dài 36').hitTestable(), findsOneWidget);
+    expect(find.byType(NavigationBar).hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets('profile and family settings fit a compact phone', (

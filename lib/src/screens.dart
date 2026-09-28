@@ -68,15 +68,23 @@ class BrandHeader extends StatelessWidget {
                     child: const Icon(Icons.eco, color: Colors.white, size: 20),
                   ),
                   const SizedBox(width: 10),
-                  const Text(
-                    'ViNeat',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                      color: _ink,
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: const Text(
+                          'ViNeat',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            color: _ink,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                  const Spacer(),
                   if (showSearch)
                     IconButton.filledTonal(
                       onPressed: () => showGlobalSearch(context),
@@ -3317,15 +3325,27 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                           size: 19,
                         ),
                         SizedBox(width: 8),
-                        Text(
-                          '$remaining món',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: _ink,
+                        Expanded(
+                          child: Text.rich(
+                            TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: '$remaining món',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    color: _ink,
+                                  ),
+                                ),
+                                const TextSpan(
+                                  text: ' cần mua',
+                                  style: TextStyle(color: _muted),
+                                ),
+                              ],
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        SizedBox(width: 5),
-                        Text('cần mua', style: TextStyle(color: _muted)),
                       ],
                     ),
                   );
@@ -3356,7 +3376,13 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                     );
                   }
 
-                  return Row(children: [counter, const Spacer(), addButton]);
+                  return Row(
+                    children: [
+                      Expanded(child: counter),
+                      const SizedBox(width: 12),
+                      addButton,
+                    ],
+                  );
                 },
               ),
               const SizedBox(height: 14),

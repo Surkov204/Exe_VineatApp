@@ -291,6 +291,8 @@ class _AppShellState extends State<AppShell>
   @override
   Widget build(BuildContext context) {
     final useRail = MediaQuery.sizeOf(context).width >= 720;
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
+    final compactNavigationLabels = textScale >= 1.3;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -453,11 +455,13 @@ class _AppShellState extends State<AppShell>
           bottomNavigationBar: useRail
               ? null
               : NavigationBar(
-                  height: 68,
+                  height: compactNavigationLabels ? 80 : 68,
                   selectedIndex: _index,
                   backgroundColor: Colors.white,
                   indicatorColor: const Color(0xFFE7F8F1),
-                  labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+                  labelBehavior: compactNavigationLabels
+                      ? NavigationDestinationLabelBehavior.onlyShowSelected
+                      : NavigationDestinationLabelBehavior.alwaysShow,
                   onDestinationSelected: _selectTab,
                   destinations: const [
                     NavigationDestination(
