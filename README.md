@@ -6,7 +6,7 @@ scan hóa đơn, gợi ý món ăn, danh sách đi chợ và báo cáo giảm l�
 ## Chạy bản demo Android
 
 1. Cài Flutter stable và Android SDK, sau đó kiểm tra bằng `flutter doctor`.
-2. Chạy `flutter pub get` để cài `shared_preferences`.
+2. Chạy `flutter pub get` để cài thư viện lưu cục bộ, chọn ảnh và OCR.
 3. Kết nối máy Android hoặc mở emulator rồi chạy `flutter run`.
 4. Tạo APK demo bằng `flutter build apk --release`.
 
@@ -15,16 +15,18 @@ scan hóa đơn, gợi ý món ăn, danh sách đi chợ và báo cáo giảm l�
 Checklist thao tác và tiêu chí nghiệm thu nằm trong
 [`DEMO_CHECKLIST.md`](DEMO_CHECKLIST.md).
 
-1. Mở **Tủ lạnh**, bấm dấu `+` và thêm một thực phẩm mới. Thống kê và cảnh báo
+1. Lần đầu mở app, đi qua hướng dẫn 5 trang; có thể mở lại tại Hồ sơ → Trợ giúp.
+2. Mở **Tủ lạnh**, bấm dấu `+` và thêm một thực phẩm mới. Thống kê và cảnh báo
    thay đổi ngay lập tức.
-2. Mở **Scan**, chọn ảnh từ thư viện hoặc nút chụp; nếu quyền camera/ảnh bị từ
-   chối, bộ xử lý tự chuyển sang hóa đơn mẫu. Bỏ/chọn từng dòng rồi bấm
-   **Thêm vào tủ**.
-3. Mở **Món ăn**, tìm một món và xem chi tiết; nút **Đã nấu xong** hiển thị
+3. Mở **Scan**, chọn ảnh thư viện hoặc chụp hóa đơn, rồi rà soát/sửa các dòng
+   OCR trước khi bấm **Thêm vào tủ**. Nếu quyền camera/ảnh bị từ chối, chọn
+   **Hóa đơn mẫu** hoặc **Nhập thủ công** trong thẻ phương thức đầu vào.
+4. Mở **Món ăn**, tìm một món và xem chi tiết; nút **Đã nấu xong** hiển thị
    phản hồi trực quan.
-4. Mở **Đi chợ**, thêm món, đánh dấu đã mua, xóa và thử **Hoàn tác**. Danh sách
+5. Mở **Đi chợ**, thêm món, đánh dấu đã mua, xóa và thử **Hoàn tác**. Danh sách
    và tủ lạnh được lưu cục bộ trên Android qua `shared_preferences`.
-5. Mở **Báo cáo** để trình bày các biểu đồ và thành tựu mẫu.
+6. Mở **Báo cáo** để xem thống kê hiện tại; các biểu đồ lịch sử chưa có dữ liệu
+   sẽ được gắn nhãn minh họa, không đại diện cho số liệu thật.
 
 ## Ghi chú hiện trạng
 
@@ -32,9 +34,9 @@ Checklist thao tác và tiêu chí nghiệm thu nằm trong
 - Workspace hiện không chứa file Proposal hoặc source backend riêng; schema
   Supabase bên dưới được dựng theo các màn hình và luồng dữ liệu đang có trong
   Flutter để không chặn buổi demo.
-- Migration Supabase nền tảng nằm trong
-  `supabase/migrations/202609200001_initial_schema.sql`; migration này chưa
-  được áp dụng vào project hosted trong môi trường hiện tại.
+- Schema nền tảng và migration bảo vệ luồng mã gia đình nằm trong
+  `supabase/migrations/`. Chúng chưa được áp dụng vào project hosted; app hiện
+  chưa có đăng nhập, repository từ xa hoặc đồng bộ giữa nhiều thiết bị.
 - Dữ liệu tủ lạnh và danh sách đi chợ được lưu trên thiết bị; nếu cache hỏng,
   app tự quay về dữ liệu mẫu để vẫn mở được.
 - Scan dùng ML Kit OCR trên Android/iOS, sau đó parser nhận diện cửa hàng,
@@ -43,7 +45,10 @@ Checklist thao tác và tiêu chí nghiệm thu nằm trong
 
 ## Kiểm chứng hiện tại
 
-- `flutter analyze`: không có issue.
-- `flutter test`: pass widget test `renders the five-screen ViNeat shell`.
-- `flutter build apk --release`: pass; APK nằm tại
-  `build/app/outputs/flutter-apk/app-release.apk` (khoảng 53 MB).
+- `dart analyze lib test`: không có issue.
+- `flutter test --no-pub`: 9 bài unit/widget pass; bao phủ điều hướng 5 tab,
+  hướng dẫn lần đầu, 320×568/360×640, tablet 900×800, luồng mua sắm, báo cáo,
+  chọn ảnh và parser OCR hóa đơn tiếng Việt.
+- `flutter build apk --release --no-pub`: pass; tạo
+  `build/app/outputs/flutter-apk/app-release.apk` (85.4 MB, APK đa kiến trúc,
+  ký debug để demo local; chưa dùng phát hành cửa hàng ứng dụng).

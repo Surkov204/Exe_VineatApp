@@ -16,6 +16,7 @@ class ReceiptParser {
     'thanh tien',
     'tien mat',
     'tien thua',
+    'tien khach dua',
     'khach tra',
     'chiet khau',
     'giam gia',

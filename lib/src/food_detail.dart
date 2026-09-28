@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
+import 'food_image.dart';
 import 'global_search.dart';
 
 const _green = Color(0xFF079669);
 const _ink = Color(0xFF253043);
 const _muted = Color(0xFF98A2B3);
-const _assetRoot = 'design_reference/home/page_files/';
 
 class FoodDetailData {
   const FoodDetailData({
@@ -201,8 +201,9 @@ class _FoodDetailScreenState extends State<FoodDetailScreen> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    Image.asset(
-                      '$_assetRoot${food.image == 0 ? 'search-image' : 'search-image(${food.image})'}',
+                    FoodImage(
+                      name: food.name,
+                      assetIndex: food.image,
                       fit: BoxFit.cover,
                     ),
                     const DecoratedBox(

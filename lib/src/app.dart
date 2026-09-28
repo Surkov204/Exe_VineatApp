@@ -1,6 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'app_tutorial.dart';
 import 'screens.dart';
 
 class VineatApp extends StatelessWidget {
@@ -66,8 +68,12 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends State<AppShell>
+    with SingleTickerProviderStateMixin {
+  static const _tutorialSeenKey = 'vineat_tutorial_completed_v1';
   int _index = 0;
+  int _transitionDirection = 1;
+  late final AnimationController _tabTransition;
 
   static const _pages = [
     FridgeScreen(),
@@ -78,64 +84,139 @@ class _AppShellState extends State<AppShell> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _tabTransition = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+      value: 1,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) => _showFirstRunGuide());
+  }
+
+  Future<void> _showFirstRunGuide() async {
+    final preferences = await SharedPreferences.getInstance();
+    if (preferences.getBool(_tutorialSeenKey) == true || !mounted) return;
+    await showAppTutorial(context, onStepChanged: _selectTab);
+    await preferences.setBool(_tutorialSeenKey, true);
+    if (mounted) _selectTab(0);
+  }
+
+  @override
+  void dispose() {
+    _tabTransition.dispose();
+    super.dispose();
+  }
+
+  void _selectTab(int value) {
+    if (value == _index) return;
+    setState(() {
+      _transitionDirection = value > _index ? 1 : -1;
+      _index = value;
+    });
+    if (MediaQuery.of(context).disableAnimations) {
+      _tabTransition.value = 1;
+    } else {
+      _tabTransition.forward(from: 0);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final useRail = MediaQuery.sizeOf(context).width >= 720;
     return Scaffold(
-      body: Stack(
-        fit: StackFit.expand,
+      body: Row(
+        key: const ValueKey('app-body-row'),
         children: [
-          for (var index = 0; index < _pages.length; index++)
-            IgnorePointer(
-              ignoring: index != _index,
-              child: TickerMode(
-                enabled: index == _index,
-                child: AnimatedOpacity(
-                  opacity: index == _index ? 1 : 0,
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeInOut,
-                  child: AnimatedSlide(
-                    offset: index == _index
-                        ? Offset.zero
-                        : const Offset(0.025, 0),
-                    duration: const Duration(milliseconds: 220),
-                    curve: Curves.easeOutCubic,
-                    child: _pages[index],
-                  ),
+          if (useRail)
+            NavigationRail(
+              selectedIndex: _index,
+              onDestinationSelected: _selectTab,
+              labelType: NavigationRailLabelType.all,
+              backgroundColor: Colors.white,
+              indicatorColor: const Color(0xFFE7F8F1),
+              destinations: const [
+                NavigationRailDestination(
+                  icon: Icon(Icons.home_outlined),
+                  selectedIcon: Icon(Icons.home),
+                  label: Text('Trang chủ'),
                 ),
-              ),
+                NavigationRailDestination(
+                  icon: Icon(Icons.document_scanner_outlined),
+                  label: Text('Scan'),
+                ),
+                NavigationRailDestination(
+                  icon: Icon(Icons.restaurant_menu),
+                  label: Text('Món ăn'),
+                ),
+                NavigationRailDestination(
+                  icon: Icon(Icons.shopping_basket_outlined),
+                  label: Text('Đi chợ'),
+                ),
+                NavigationRailDestination(
+                  icon: Icon(Icons.bar_chart_rounded),
+                  label: Text('Báo cáo'),
+                ),
+              ],
             ),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        height: 68,
-        selectedIndex: _index,
-        backgroundColor: Colors.white,
-        indicatorColor: const Color(0xFFE7F8F1),
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        onDestinationSelected: (value) => setState(() => _index = value),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Trang chủ',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.document_scanner_outlined),
-            label: 'Scan',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.restaurant_menu),
-            label: 'Món ăn',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.shopping_basket_outlined),
-            label: 'Đi chợ',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.bar_chart_rounded),
-            label: 'Báo cáo',
+          Expanded(
+            child: AnimatedBuilder(
+              animation: _tabTransition,
+              child: SizedBox.expand(
+                child: IndexedStack(index: _index, children: _pages),
+              ),
+              builder: (context, child) {
+                final progress = Curves.easeOutCubic.transform(
+                  _tabTransition.value,
+                );
+                return Opacity(
+                  opacity: .88 + (.12 * progress),
+                  child: Transform.translate(
+                    offset: Offset(
+                      _transitionDirection * 10 * (1 - progress),
+                      0,
+                    ),
+                    child: child,
+                  ),
+                );
+              },
+            ),
           ),
         ],
       ),
+      bottomNavigationBar: useRail
+          ? null
+          : NavigationBar(
+              height: 68,
+              selectedIndex: _index,
+              backgroundColor: Colors.white,
+              indicatorColor: const Color(0xFFE7F8F1),
+              labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+              onDestinationSelected: _selectTab,
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.home_outlined),
+                  selectedIcon: Icon(Icons.home),
+                  label: 'Trang chủ',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.document_scanner_outlined),
+                  label: 'Scan',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.restaurant_menu),
+                  label: 'Món ăn',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.shopping_basket_outlined),
+                  label: 'Đi chợ',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.bar_chart_rounded),
+                  label: 'Báo cáo',
+                ),
+              ],
+            ),
     );
   }
 }

@@ -3,8 +3,10 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'food_detail.dart';
+import 'food_image.dart';
 import 'global_search.dart';
 import 'inventory_store.dart';
 import 'profile_screen.dart';
@@ -45,47 +47,55 @@ class BrandHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: _green,
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: const Icon(Icons.eco, color: Colors.white, size: 20),
-              ),
-              const SizedBox(width: 10),
-              const Text(
-                'ViNeat',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: _ink,
-                ),
-              ),
-              const Spacer(),
-              if (search)
-                IconButton.filledTonal(
-                  onPressed: () => showGlobalSearch(context),
-                  icon: const Icon(Icons.search),
-                  style: IconButton.styleFrom(
-                    backgroundColor: const Color(0xFFF3F4F6),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final showSearch = search && constraints.maxWidth >= 270;
+              return Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: _green,
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: const Icon(Icons.eco, color: Colors.white, size: 20),
                   ),
-                ),
-              const SizedBox(width: 4),
-              IconButton.filledTonal(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
-                ),
-                icon: const Icon(Icons.person_outline),
-                style: IconButton.styleFrom(
-                  backgroundColor: const Color(0xFFD9FAEA),
-                  foregroundColor: _green,
-                ),
-              ),
-            ],
+                  const SizedBox(width: 10),
+                  const Text(
+                    'ViNeat',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      color: _ink,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (showSearch)
+                    IconButton.filledTonal(
+                      onPressed: () => showGlobalSearch(context),
+                      icon: const Icon(Icons.search),
+                      style: IconButton.styleFrom(
+                        backgroundColor: const Color(0xFFF3F4F6),
+                      ),
+                    ),
+                  if (showSearch) const SizedBox(width: 4),
+                  if (constraints.maxWidth >= 220)
+                    IconButton.filledTonal(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const ProfileScreen(),
+                        ),
+                      ),
+                      icon: const Icon(Icons.person_outline),
+                      style: IconButton.styleFrom(
+                        backgroundColor: const Color(0xFFD9FAEA),
+                        foregroundColor: _green,
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
           if (title != null) ...[
             const SizedBox(height: 13),
@@ -212,43 +222,47 @@ class _FridgeScreenState extends State<FridgeScreen> {
                   child: ListView(
                     padding: const EdgeInsets.all(14),
                     children: [
-                      GridView.count(
-                        crossAxisCount: 2,
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        mainAxisSpacing: 10,
-                        crossAxisSpacing: 10,
-                        childAspectRatio: 2.35,
-                        children: [
-                          _StatTile(
-                            'Tổng số món',
-                            '${inventoryFoods.length}',
-                            Icons.kitchen_outlined,
-                            Color(0xFFE9FAF3),
-                            _green,
-                          ),
-                          _StatTile(
-                            'Còn tươi',
-                            '$freshCount',
-                            Icons.eco_outlined,
-                            Color(0xFFE9FAF0),
-                            Color(0xFF16A34A),
-                          ),
-                          _StatTile(
-                            'Sắp hết hạn',
-                            '$warningCount',
-                            Icons.warning_amber,
-                            Color(0xFFFFF8E8),
-                            Color(0xFFF59E0B),
-                          ),
-                          _StatTile(
-                            'Đã hết hạn',
-                            '$expiredCount',
-                            Icons.cancel_outlined,
-                            Color(0xFFFFF0F1),
-                            Color(0xFFEF5350),
-                          ),
-                        ],
+                      LayoutBuilder(
+                        builder: (context, constraints) => GridView.count(
+                          crossAxisCount: 2,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          mainAxisSpacing: 10,
+                          crossAxisSpacing: 10,
+                          childAspectRatio: constraints.maxWidth < 400
+                              ? 1.35
+                              : 2.35,
+                          children: [
+                            _StatTile(
+                              'Tổng số món',
+                              '${inventoryFoods.length}',
+                              Icons.kitchen_outlined,
+                              Color(0xFFE9FAF3),
+                              _green,
+                            ),
+                            _StatTile(
+                              'Còn tươi',
+                              '$freshCount',
+                              Icons.eco_outlined,
+                              Color(0xFFE9FAF0),
+                              Color(0xFF16A34A),
+                            ),
+                            _StatTile(
+                              'Sắp hết hạn',
+                              '$warningCount',
+                              Icons.warning_amber,
+                              Color(0xFFFFF8E8),
+                              Color(0xFFF59E0B),
+                            ),
+                            _StatTile(
+                              'Đã hết hạn',
+                              '$expiredCount',
+                              Icons.cancel_outlined,
+                              Color(0xFFFFF0F1),
+                              Color(0xFFEF5350),
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 12),
                       Card(
@@ -259,25 +273,33 @@ class _FridgeScreenState extends State<FridgeScreen> {
                             children: [
                               Row(
                                 children: [
-                                  Icon(
+                                  const Icon(
                                     Icons.timer_outlined,
                                     color: Colors.redAccent,
                                     size: 18,
                                   ),
-                                  SizedBox(width: 6),
-                                  Text(
-                                    'Cảnh báo hết hạn',
-                                    style: TextStyle(
-                                      color: Colors.redAccent,
-                                      fontWeight: FontWeight.w800,
+                                  const SizedBox(width: 6),
+                                  const Expanded(
+                                    child: Text(
+                                      'Cảnh báo hết hạn',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: Colors.redAccent,
+                                        fontWeight: FontWeight.w800,
+                                      ),
                                     ),
                                   ),
-                                  Spacer(),
-                                  Text(
-                                    '$warningCount sắp hết hạn',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: _muted,
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      '$warningCount sắp hết hạn',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: _muted,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -429,6 +451,9 @@ class _AddFoodDialogState extends State<_AddFoodDialog> {
   DateTime purchaseDate = DateTime.now();
   DateTime? expiryDate;
   bool submitted = false;
+  bool savingImage = false;
+  XFile? selectedImage;
+  final imagePicker = ImagePicker();
 
   @override
   void dispose() {
@@ -467,7 +492,41 @@ class _AddFoodDialogState extends State<_AddFoodDialog> {
     });
   }
 
-  void _submit() {
+  Future<void> _pickFoodImage(ImageSource source) async {
+    try {
+      final image = await imagePicker.pickImage(
+        source: source,
+        imageQuality: 82,
+        maxWidth: 1400,
+      );
+      if (image != null && mounted) setState(() => selectedImage = image);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không thể mở ảnh trên thiết bị này')),
+      );
+    }
+  }
+
+  Future<String?> _saveSelectedImage() async {
+    final image = selectedImage;
+    if (image == null) return null;
+    try {
+      final root = await getApplicationDocumentsDirectory();
+      final folder = Directory(
+        '${root.path}${Platform.pathSeparator}food_images',
+      );
+      await folder.create(recursive: true);
+      final target =
+          '${folder.path}${Platform.pathSeparator}'
+          'food_${DateTime.now().microsecondsSinceEpoch}.jpg';
+      return (await File(image.path).copy(target)).path;
+    } catch (_) {
+      return image.path;
+    }
+  }
+
+  Future<void> _submit() async {
     setState(() => submitted = true);
     if (name.text.trim().isEmpty ||
         quantity.text.trim().isEmpty ||
@@ -475,6 +534,9 @@ class _AddFoodDialogState extends State<_AddFoodDialog> {
         expiryDate == null) {
       return;
     }
+    setState(() => savingImage = true);
+    final imagePath = await _saveSelectedImage();
+    if (!mounted) return;
     final rawPrice = price.text.replaceAll(RegExp(r'[^0-9]'), '');
     final displayPrice = rawPrice.isEmpty ? '0đ' : '${_money(rawPrice)}đ';
     final days = expiryDate!.difference(DateTime.now()).inDays;
@@ -490,8 +552,10 @@ class _AddFoodDialogState extends State<_AddFoodDialog> {
       'Đồ uống' => 8,
       _ => 0,
     };
+    final foodName = name.text.trim();
+    if (imagePath != null) customFoodImagePaths[foodName] = imagePath;
     Navigator.pop<FoodSummary>(context, (
-      name.text.trim(),
+      foodName,
       '${quantity.text.trim()} $unit · $displayPrice',
       status,
       image,
@@ -576,6 +640,82 @@ class _AddFoodDialogState extends State<_AddFoodDialog> {
                           ),
                     ),
                     const SizedBox(height: 14),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE5E7EB)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Hình ảnh thực phẩm',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              color: _ink,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: SizedBox(
+                              width: double.infinity,
+                              height: 150,
+                              child: selectedImage == null
+                                  ? Image.asset(
+                                      '$_assetRoot${switch (category) {
+                                        'Rau củ' => 'search-image(5)',
+                                        'Thịt cá' => 'search-image(2)',
+                                        'Đồ khô' => 'search-image(6)',
+                                        'Đồ uống' => 'search-image(8)',
+                                        _ => 'search-image',
+                                      }}',
+                                      fit: BoxFit.cover,
+                                    )
+                                  : Image.file(
+                                      File(selectedImage!.path),
+                                      fit: BoxFit.cover,
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () =>
+                                      _pickFoodImage(ImageSource.gallery),
+                                  icon: const Icon(
+                                    Icons.photo_library_outlined,
+                                  ),
+                                  label: const Text('Chọn ảnh'),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              IconButton.filledTonal(
+                                onPressed: () =>
+                                    _pickFoodImage(ImageSource.camera),
+                                tooltip: 'Chụp ảnh',
+                                icon: const Icon(Icons.photo_camera_outlined),
+                              ),
+                              if (selectedImage != null) ...[
+                                const SizedBox(width: 6),
+                                IconButton(
+                                  onPressed: () =>
+                                      setState(() => selectedImage = null),
+                                  tooltip: 'Dùng ảnh mặc định',
+                                  icon: const Icon(Icons.refresh),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
                     DropdownButtonFormField<String>(
                       initialValue: category,
                       decoration: _decoration('Danh mục'),
@@ -594,7 +734,8 @@ class _AddFoodDialogState extends State<_AddFoodDialog> {
                                 ),
                               )
                               .toList(),
-                      onChanged: (value) => category = value ?? category,
+                      onChanged: (value) =>
+                          setState(() => category = value ?? category),
                     ),
                     const SizedBox(height: 14),
                     Row(
@@ -710,11 +851,16 @@ class _AddFoodDialogState extends State<_AddFoodDialog> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: FilledButton(
-                      onPressed: _submit,
+                      onPressed: savingImage ? null : _submit,
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 15),
                       ),
-                      child: const Text('Thêm vào tủ'),
+                      child: savingImage
+                          ? const SizedBox.square(
+                              dimension: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Thêm vào tủ'),
                     ),
                   ),
                 ],
@@ -774,20 +920,29 @@ class _StatTile extends StatelessWidget {
       children: [
         Icon(icon, color: color, size: 20),
         const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(label, style: const TextStyle(fontSize: 10, color: _muted)),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                color: color,
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 10, color: _muted),
               ),
-            ),
-          ],
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     ),
@@ -862,8 +1017,9 @@ class _FoodTile extends StatelessWidget {
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(9),
-                child: Image.asset(
-                  '$_assetRoot${image == 0 ? 'search-image' : 'search-image($image)'}',
+                child: FoodImage(
+                  name: name,
+                  assetIndex: image,
                   width: 48,
                   height: 48,
                   fit: BoxFit.cover,
@@ -1054,15 +1210,6 @@ class _ScanScreenState extends State<ScanScreen>
     });
   }
 
-  void _voiceComingSoon() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Đang mở nhập nhanh để bạn kiểm tra dữ liệu'),
-      ),
-    );
-    unawaited(_manualEntry());
-  }
-
   Future<void> _pickReceipt(ImageSource source) async {
     try {
       final image = await imagePicker.pickImage(
@@ -1239,9 +1386,9 @@ class _ScanScreenState extends State<ScanScreen>
           padding: const EdgeInsets.all(16),
           children: [
             _InputMethodCard(
+              onScan: () => _pickReceipt(ImageSource.gallery),
               onTemplate: _chooseTemplate,
               onManual: _manualEntry,
-              onVoice: _voiceComingSoon,
             ),
             const SizedBox(height: 14),
             if (stage == 0) ...[
@@ -1298,7 +1445,7 @@ class _ScanScreenState extends State<ScanScreen>
                       child: Column(
                         children: [
                           IconButton.filled(
-                            tooltip: 'Dùng ảnh hóa đơn mẫu',
+                            tooltip: 'Chọn ảnh hóa đơn từ thư viện',
                             onPressed: () => _pickReceipt(ImageSource.gallery),
                             icon: const Icon(Icons.image_outlined),
                             style: IconButton.styleFrom(
@@ -1323,7 +1470,7 @@ class _ScanScreenState extends State<ScanScreen>
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     IconButton.filledTonal(
-                      tooltip: 'Chọn ảnh hóa đơn mẫu',
+                      tooltip: 'Chọn ảnh hóa đơn từ thư viện',
                       onPressed: () => _pickReceipt(ImageSource.gallery),
                       icon: const Icon(Icons.image_outlined),
                     ),
@@ -1467,12 +1614,12 @@ class _ScanScreenState extends State<ScanScreen>
 
 class _InputMethodCard extends StatelessWidget {
   const _InputMethodCard({
+    required this.onScan,
     required this.onTemplate,
     required this.onManual,
-    required this.onVoice,
   });
 
-  final VoidCallback onTemplate, onManual, onVoice;
+  final VoidCallback onScan, onTemplate, onManual;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -1490,7 +1637,7 @@ class _InputMethodCard extends StatelessWidget {
                 label: 'Quét hóa đơn',
                 note: 'Chụp hoặc tải ảnh',
                 active: true,
-                onTap: () {},
+                onTap: onScan,
               ),
               const SizedBox(width: 8),
               _InputMethod(
@@ -1510,9 +1657,9 @@ class _InputMethodCard extends StatelessWidget {
               _InputMethod(
                 icon: Icons.mic_none,
                 label: 'Giọng nói',
-                note: 'Sắp ra mắt',
+                note: 'Chưa hỗ trợ',
                 disabled: true,
-                onTap: onVoice,
+                onTap: () {},
               ),
             ],
           ),
@@ -1540,7 +1687,7 @@ class _InputMethod extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Expanded(
     child: InkWell(
-      onTap: onTap,
+      onTap: disabled ? null : onTap,
       borderRadius: BorderRadius.circular(11),
       child: Container(
         height: 92,
@@ -2836,9 +2983,9 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Row(
-                children: [
-                  Container(
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final counter = Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
                       vertical: 11,
@@ -2866,9 +3013,8 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                         Text('cần mua', style: TextStyle(color: _muted)),
                       ],
                     ),
-                  ),
-                  const Spacer(),
-                  FilledButton.icon(
+                  );
+                  final addButton = FilledButton.icon(
                     onPressed: _showAddItemDialog,
                     icon: const Icon(Icons.add),
                     label: const Text('Thêm món'),
@@ -2881,8 +3027,21 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                  ),
-                ],
+                  );
+
+                  if (constraints.maxWidth < 390) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        counter,
+                        const SizedBox(height: 10),
+                        addButton,
+                      ],
+                    );
+                  }
+
+                  return Row(children: [counter, const Spacer(), addButton]);
+                },
               ),
               const SizedBox(height: 14),
               SizedBox(
@@ -3117,82 +3276,89 @@ class _AddShoppingItemDialogState extends State<AddShoppingItemDialog> {
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final maxDialogHeight =
+        (MediaQuery.sizeOf(context).height - bottomInset - 48)
+            .clamp(280.0, 760.0)
+            .toDouble();
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520, maxHeight: 760),
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(22, 20, 22, 20 + bottomInset),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Thêm món cần mua',
-                      style: TextStyle(
-                        fontSize: 21,
-                        fontWeight: FontWeight.w900,
-                        color: _ink,
-                      ),
-                    ),
-                  ),
-                  IconButton.filledTonal(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                    style: IconButton.styleFrom(
-                      backgroundColor: const Color(0xFFF3F4F6),
-                      foregroundColor: const Color(0xFF667085),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              _FormLabel('Tên món'),
-              TextField(
-                controller: nameController,
-                autofocus: true,
-                onChanged: (_) {
-                  if (showNameError) setState(() => showNameError = false);
-                },
-                decoration: _inputDecoration(
-                  'VD: Thịt gà, Rau muống...',
-                  error: showNameError ? 'Vui lòng nhập tên món' : null,
-                ),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+        constraints: BoxConstraints(maxWidth: 520, maxHeight: maxDialogHeight),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(22, 20, 22, 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        _FormLabel('Số lượng'),
-                        TextField(
-                          controller: quantityController,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
+                        const Expanded(
+                          child: Text(
+                            'Thêm món cần mua',
+                            style: TextStyle(
+                              fontSize: 21,
+                              fontWeight: FontWeight.w900,
+                              color: _ink,
+                            ),
                           ),
-                          decoration: _inputDecoration('1'),
+                        ),
+                        IconButton.filledTonal(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close),
+                          style: IconButton.styleFrom(
+                            backgroundColor: const Color(0xFFF3F4F6),
+                            foregroundColor: const Color(0xFF667085),
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _FormLabel('Đơn vị'),
-                        DropdownButtonFormField<String>(
-                          initialValue: unit,
-                          decoration: _inputDecoration(''),
-                          items:
-                              const [
+                    const SizedBox(height: 16),
+                    _FormLabel('Tên món'),
+                    TextField(
+                      controller: nameController,
+                      autofocus: true,
+                      onChanged: (_) {
+                        if (showNameError) {
+                          setState(() => showNameError = false);
+                        }
+                      },
+                      decoration: _inputDecoration(
+                        'VD: Thịt gà, Rau muống...',
+                        error: showNameError ? 'Vui lòng nhập tên món' : null,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final quantityField = Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _FormLabel('Số lượng'),
+                            TextField(
+                              controller: quantityController,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: _inputDecoration('1'),
+                            ),
+                          ],
+                        );
+                        final unitField = Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _FormLabel('Đơn vị'),
+                            DropdownButtonFormField<String>(
+                              isExpanded: true,
+                              initialValue: unit,
+                              decoration: _inputDecoration(''),
+                              items:
+                                  const [
                                     'gói',
                                     'kg',
                                     'gram',
@@ -3202,74 +3368,102 @@ class _AddShoppingItemDialogState extends State<AddShoppingItemDialog> {
                                     'hộp',
                                     'miếng',
                                     'cây',
-                                  ]
-                                  .map(
-                                    (value) => DropdownMenuItem(
+                                  ].map((value) {
+                                    return DropdownMenuItem(
                                       value: value,
-                                      child: Text(value),
-                                    ),
-                                  )
-                                  .toList(),
-                          onChanged: (value) => setState(() => unit = value!),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              _FormLabel('Danh mục'),
-              DropdownButtonFormField<String>(
-                initialValue: category,
-                decoration: _inputDecoration(''),
-                items: const ['Rau củ', 'Thịt cá', 'Đồ khô', 'Khác']
-                    .map(
-                      (value) =>
-                          DropdownMenuItem(value: value, child: Text(value)),
-                    )
-                    .toList(),
-                onChanged: (value) => setState(() => category = value!),
-              ),
-              const SizedBox(height: 14),
-              _FormLabel('Độ ưu tiên'),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: ['Cần mua gấp', 'Bình thường', 'Có cũng được']
-                      .map(
-                        (value) => Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: ChoiceChip(
-                            label: Text(value),
-                            selected: priority == value,
-                            showCheckmark: false,
-                            selectedColor: _green,
-                            backgroundColor: const Color(0xFFF3F4F6),
-                            labelStyle: TextStyle(
-                              color: priority == value
-                                  ? Colors.white
-                                  : const Color(0xFF667085),
-                              fontWeight: FontWeight.w700,
+                                      child: Text(
+                                        value,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    );
+                                  }).toList(),
+                              onChanged: (value) {
+                                if (value != null) setState(() => unit = value);
+                              },
                             ),
-                            onSelected: (_) => setState(() => priority = value),
-                          ),
-                        ),
-                      )
-                      .toList(),
+                          ],
+                        );
+                        if (constraints.maxWidth < 340) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              quantityField,
+                              const SizedBox(height: 12),
+                              unitField,
+                            ],
+                          );
+                        }
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: quantityField),
+                            const SizedBox(width: 12),
+                            Expanded(child: unitField),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    _FormLabel('Danh mục'),
+                    DropdownButtonFormField<String>(
+                      initialValue: category,
+                      decoration: _inputDecoration(''),
+                      items: const ['Rau củ', 'Thịt cá', 'Đồ khô', 'Khác']
+                          .map(
+                            (value) => DropdownMenuItem(
+                              value: value,
+                              child: Text(value),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) => setState(() => category = value!),
+                    ),
+                    const SizedBox(height: 14),
+                    _FormLabel('Độ ưu tiên'),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: ['Cần mua gấp', 'Bình thường', 'Có cũng được']
+                            .map(
+                              (value) => Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: ChoiceChip(
+                                  label: Text(value),
+                                  selected: priority == value,
+                                  showCheckmark: false,
+                                  selectedColor: _green,
+                                  backgroundColor: const Color(0xFFF3F4F6),
+                                  labelStyle: TextStyle(
+                                    color: priority == value
+                                        ? Colors.white
+                                        : const Color(0xFF667085),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                  onSelected: (_) =>
+                                      setState(() => priority = value),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    _FormLabel('Ghi chú'),
+                    TextField(
+                      controller: noteController,
+                      minLines: 2,
+                      maxLines: 3,
+                      decoration: _inputDecoration(
+                        'VD: Mua loại tươi, chọn quả chín...',
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 14),
-              _FormLabel('Ghi chú'),
-              TextField(
-                controller: noteController,
-                minLines: 2,
-                maxLines: 3,
-                decoration: _inputDecoration(
-                  'VD: Mua loại tươi, chọn quả chín...',
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 8, 22, 20),
+              child: Row(
                 children: [
                   Expanded(
                     child: OutlinedButton(
@@ -3296,8 +3490,8 @@ class _AddShoppingItemDialogState extends State<AddShoppingItemDialog> {
                   ),
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -3365,6 +3559,9 @@ class ReportsScreen extends StatelessWidget {
         final wastePercent = totalValue == 0
             ? 0
             : ((expiredValue / totalValue) * 100).round();
+        final pricedCount = inventoryFoods
+            .where((food) => priceOf(food) > 0)
+            .length;
         return Column(
           children: [
             const BrandHeader(),
@@ -3372,47 +3569,49 @@ class ReportsScreen extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.all(14),
                 children: [
-                  GridView.count(
-                    crossAxisCount: 2,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    mainAxisSpacing: 10,
-                    crossAxisSpacing: 10,
-                    childAspectRatio: 1.45,
-                    children: [
-                      _ReportStat(
-                        'Giá trị trong tủ hiện tại',
-                        vnd(totalValue),
-                        '${inventoryFoods.length} thực phẩm đang theo dõi',
-                        Icons.savings_outlined,
-                        Color(0xFFE8FBF4),
-                        _green,
-                      ),
-                      _ReportStat(
-                        'Giá trị đã hết hạn',
-                        vnd(expiredValue),
-                        'Cần xử lý sớm',
-                        Icons.account_balance_wallet_outlined,
-                        Color(0xFFFFEFF0),
-                        Colors.redAccent,
-                      ),
-                      _ReportStat(
-                        'Tỉ lệ lãng phí tháng này',
-                        '$wastePercent%',
-                        '${vnd(expiredValue)} / ${vnd(totalValue)}',
-                        Icons.emoji_events_outlined,
-                        Color(0xFFFFF8E5),
-                        Colors.orange,
-                      ),
-                      const _ReportStat(
-                        'Thành tựu',
-                        '6/9',
-                        'Đã mở khóa',
-                        Icons.workspace_premium_outlined,
-                        Color(0xFFFFEFF7),
-                        Colors.pinkAccent,
-                      ),
-                    ],
+                  LayoutBuilder(
+                    builder: (context, constraints) => GridView.count(
+                      crossAxisCount: 2,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      mainAxisSpacing: 10,
+                      crossAxisSpacing: 10,
+                      childAspectRatio: constraints.maxWidth < 400 ? 1 : 1.45,
+                      children: [
+                        _ReportStat(
+                          'Giá trị trong tủ hiện tại',
+                          vnd(totalValue),
+                          '${inventoryFoods.length} thực phẩm đang theo dõi',
+                          Icons.savings_outlined,
+                          Color(0xFFE8FBF4),
+                          _green,
+                        ),
+                        _ReportStat(
+                          'Tỉ trọng giá trị hết hạn',
+                          vnd(expiredValue),
+                          'Cần xử lý sớm',
+                          Icons.account_balance_wallet_outlined,
+                          Color(0xFFFFEFF0),
+                          Colors.redAccent,
+                        ),
+                        _ReportStat(
+                          'Giá trị đã hết hạn',
+                          '$wastePercent%',
+                          'Tỉ trọng trong giá trị tủ',
+                          Icons.emoji_events_outlined,
+                          Color(0xFFFFF8E5),
+                          Colors.orange,
+                        ),
+                        _ReportStat(
+                          'Thực phẩm có giá',
+                          '$pricedCount/${inventoryFoods.length}',
+                          'Có thông tin giá trị',
+                          Icons.sell_outlined,
+                          Color(0xFFFFEFF7),
+                          Colors.pinkAccent,
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Card(
@@ -3421,9 +3620,7 @@ class ReportsScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const SectionTitle(
-                            'Xu hướng lãng phí & tiết kiệm (VNĐ)',
-                          ),
+                          const SectionTitle('Xu hướng (dữ liệu minh họa)'),
                           const SizedBox(height: 18),
                           SizedBox(
                             height: 145,
@@ -3466,7 +3663,7 @@ class ReportsScreen extends StatelessWidget {
                       padding: const EdgeInsets.all(14),
                       child: Column(
                         children: const [
-                          SectionTitle('So sánh tháng đầu — tháng này'),
+                          SectionTitle('So sánh (dữ liệu minh họa)'),
                           SizedBox(height: 13),
                           Row(
                             children: [
@@ -3502,7 +3699,7 @@ class ReportsScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const SectionTitle('Lượng thực phẩm lãng phí (kg)'),
+                          const SectionTitle('Lãng phí (dữ liệu minh họa)'),
                           const SizedBox(height: 18),
                           SizedBox(
                             height: 140,
@@ -3528,7 +3725,7 @@ class ReportsScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: const [
-                          SectionTitle('Tỉ lệ giữ lại theo danh mục'),
+                          SectionTitle('Theo danh mục (dữ liệu minh họa)'),
                           SizedBox(height: 14),
                           _Retention('Rau củ', .82, Colors.green),
                           _Retention('Thịt cá', .88, Colors.redAccent),
@@ -3542,8 +3739,8 @@ class ReportsScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 15),
                   const SectionTitle(
-                    'Thành tựu đã mở khóa',
-                    trailing: '6 thành tựu',
+                    'Mục tiêu mẫu',
+                    trailing: 'Chưa theo dõi lịch sử',
                   ),
                   const SizedBox(height: 8),
                   const _Achievement(
@@ -3587,7 +3784,7 @@ class ReportsScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 9),
                         const Text(
-                          'Chia sẻ thành tích của bạn!',
+                          'Tóm tắt dữ liệu hiện tại',
                           style: TextStyle(
                             fontWeight: FontWeight.w800,
                             color: _ink,
@@ -3600,16 +3797,9 @@ class ReportsScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 12),
                         FilledButton.icon(
-                          onPressed: () =>
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Đã tạo ảnh thành tích để chia sẻ',
-                                  ),
-                                ),
-                              ),
+                          onPressed: null,
                           icon: const Icon(Icons.share, size: 17),
-                          label: const Text('Chia sẻ lên mạng xã hội'),
+                          label: const Text('Chia sẻ sắp ra mắt'),
                         ),
                       ],
                     ),
@@ -3673,7 +3863,12 @@ class _ReportStat extends StatelessWidget {
               color: _ink,
             ),
           ),
-          Text(note, style: const TextStyle(fontSize: 9, color: _muted)),
+          Text(
+            note,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 9, color: _muted),
+          ),
         ],
       ),
     ),
@@ -3811,7 +4006,7 @@ class _Achievement extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(Icons.check_circle, color: Color(0xFF20C997), size: 16),
+          const Icon(Icons.flag_outlined, color: Color(0xFF20C997), size: 18),
         ],
       ),
     ),
