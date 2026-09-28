@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
@@ -249,7 +250,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   expiringCount: 1,
                   height: 210,
                   preview: true,
-                  active: false,
+                  // Show the interactive model on sign-in while keeping the
+                  // form immediately available below it.
+                  active: true,
                 ),
                 const SizedBox(height: 28),
                 const Text(
@@ -310,7 +313,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     keyboardType: TextInputType.number,
                     textInputAction: TextInputAction.done,
                     autofillHints: const [AutofillHints.oneTimeCode],
-                    maxLength: 8,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    maxLength: 6,
                     decoration: const InputDecoration(
                       labelText: 'Mã xác thực trong email',
                       prefixIcon: Icon(Icons.password),

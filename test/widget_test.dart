@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vineat_app/src/app.dart' show VineatApp;
+import 'package:vineat_app/src/auth_screens.dart' show LoginScreen;
 import 'package:vineat_app/src/app_tutorial.dart'
     show
         AnchoredTutorialCoachmark,
         pageTutorialPreferenceKey,
         tutorialTargetKeys;
 import 'package:vineat_app/src/food_detail.dart' show FoodDetailScreen;
+import 'package:vineat_app/src/fridge_showcase.dart' show SmartFridgeShowcase;
 import 'package:vineat_app/src/inventory_store.dart';
 import 'package:vineat_app/src/profile_screen.dart' show ProfileScreen;
 import 'package:vineat_app/src/recipe_detail.dart' show recipeImageAssetFor;
@@ -167,6 +169,23 @@ void main() {
     expect(find.text('Giá trị thực phẩm đang theo dõi'), findsNothing);
   });
 
+  testWidgets('sign-in keeps the form visible with its interactive preview', (
+    tester,
+  ) async {
+    setTestViewport(tester, const Size(360, 640));
+    await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
+    await tester.pumpAndSettle();
+
+    final preview = tester.widget<SmartFridgeShowcase>(
+      find.byType(SmartFridgeShowcase),
+    );
+    expect(preview.active, isTrue);
+    expect(find.text('Chào mừng bạn về nhà'), findsOneWidget);
+    expect(find.text('Email của bạn'), findsOneWidget);
+    expect(find.text('Tiếp tục với Google'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('keeps tabs separated on a compact phone', (tester) async {
     setTestViewport(tester, const Size(360, 640));
 
@@ -192,6 +211,24 @@ void main() {
     expect(find.text('Danh sách đi chợ'), findsNothing);
 
     await tester.tap(find.text('Trang chủ'));
+    await tester.pumpAndSettle();
+    expect(find.text('Tủ lạnh của bạn'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('five tabs fit a 393dp phone and return to the fridge', (
+    tester,
+  ) async {
+    setTestViewport(tester, const Size(393, 852));
+    await tester.pumpWidget(const VineatApp());
+    await tester.pumpAndSettle();
+
+    for (final tab in ['Scan', 'Món ăn', 'Đi chợ', 'Báo cáo']) {
+      await tester.tap(find.text(tab).last);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: 'tab $tab at 393dp');
+    }
+    await tester.tap(find.text('Trang chủ').last);
     await tester.pumpAndSettle();
     expect(find.text('Tủ lạnh của bạn'), findsOneWidget);
     expect(tester.takeException(), isNull);
