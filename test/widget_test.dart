@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vineat_app/src/app_services.dart' show appOAuthRedirect;
 import 'package:vineat_app/src/app.dart' show VineatApp;
 import 'package:vineat_app/src/auth_screens.dart' show LoginScreen;
 import 'package:vineat_app/src/app_tutorial.dart'
@@ -34,6 +35,13 @@ void setTestViewport(WidgetTester tester, Size size) {
 }
 
 void main() {
+  test('debug preview uses a unique OAuth callback scheme', () {
+    expect(
+      appOAuthRedirect,
+      'com.vineat.team.vineat_app.preview://login-callback',
+    );
+  });
+
   test('tutorial completion is isolated per signed-in account', () {
     final accountA = pageTutorialPreferenceKey(
       userId: 'user-a',

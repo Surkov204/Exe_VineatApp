@@ -9,7 +9,9 @@ const _supabasePublicKey = String.fromEnvironment(
 );
 const appOAuthRedirect = String.fromEnvironment(
   'VINEAT_OAUTH_REDIRECT',
-  defaultValue: 'com.vineat.team.vineat_app://login-callback',
+  defaultValue: kDebugMode
+      ? 'com.vineat.team.vineat_app.preview://login-callback'
+      : 'com.vineat.team.vineat_app://login-callback',
 );
 
 class AppServices {

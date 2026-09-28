@@ -26,8 +26,9 @@ local, ký debug; không dùng để phát hành cửa hàng.
 
 ## Chạy với Supabase
 
-1. Cấu hình email OTP và Google trong Supabase Auth. Thêm redirect URI
-   `com.vineat.team.vineat_app://login-callback` vào danh sách Redirect URLs.
+1. Cấu hình email OTP và Google trong Supabase Auth. Thêm hai redirect URI vào
+   danh sách Redirect URLs: `com.vineat.team.vineat_app://login-callback` cho
+   Release và `com.vineat.team.vineat_app.preview://login-callback` cho Debug.
 2. Cài Supabase CLI, liên kết project rồi áp dụng các migration theo thứ tự:
 
    ```powershell
