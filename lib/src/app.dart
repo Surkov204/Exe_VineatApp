@@ -8,7 +8,11 @@ import 'app_tutorial.dart';
 import 'app_services.dart';
 import 'auth_screens.dart';
 import 'household_data_repository.dart';
+import 'inventory_store.dart';
 import 'screens.dart';
+
+final RouteObserver<ModalRoute<dynamic>> appRouteObserver =
+    RouteObserver<ModalRoute<dynamic>>();
 
 class VineatApp extends StatelessWidget {
   const VineatApp({super.key});
@@ -17,6 +21,7 @@ class VineatApp extends StatelessWidget {
   Widget build(BuildContext context) {
     const green = Color(0xFF079669);
     return MaterialApp(
+      navigatorObservers: [appRouteObserver],
       debugShowCheckedModeBanner: false,
       title: 'ViNeat',
       theme: ThemeData(
@@ -74,7 +79,7 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, RouteAware {
   static const _pageKeys = ['home', 'scan', 'recipes', 'shopping', 'reports'];
   static const _pageTips = [
     (
@@ -102,6 +107,7 @@ class _AppShellState extends State<AppShell>
   int _transitionDirection = 1;
   bool _showPageTip = false;
   late final AnimationController _tabTransition;
+  ModalRoute<dynamic>? _route;
 
   static const _pages = [
     FridgeScreen(),
@@ -119,9 +125,30 @@ class _AppShellState extends State<AppShell>
       duration: const Duration(milliseconds: 220),
       value: 1,
     );
+    activeAppTabIndex.value = 0;
     tutorialPageRequest.addListener(_handleTutorialRequest);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _showTipIfNeeded(0));
+    HouseholdService.instance.active.addListener(_handleActiveHouseholdChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _handleActiveHouseholdChanged();
+      _showTipIfNeeded(0);
+    });
   }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route == _route) return;
+    if (_route != null) appRouteObserver.unsubscribe(this);
+    _route = route;
+    if (route != null) appRouteObserver.subscribe(this, route);
+  }
+
+  @override
+  void didPushNext() => activeAppTabIndex.value = -1;
+
+  @override
+  void didPopNext() => activeAppTabIndex.value = _index;
 
   void _handleTutorialRequest() {
     final requested = tutorialPageRequest.value;
@@ -130,10 +157,39 @@ class _AppShellState extends State<AppShell>
     tutorialPageRequest.value = null;
   }
 
+  void _handleActiveHouseholdChanged() {
+    if (!AppServices.configured) return;
+    final householdId = HouseholdService.instance.active.value?.id;
+    unawaited(
+      HouseholdDataRepository.instance.watchHouseholdChanges(
+        householdId: householdId,
+        onSnapshot: (snapshot) {
+          if (!mounted ||
+              HouseholdService.instance.active.value?.id != householdId) {
+            return;
+          }
+          replaceInventoryFromRemote(
+            records: snapshot.inventory,
+            events: snapshot.events,
+          );
+          replaceShoppingFromRemote(
+            items: snapshot.shopping.map((item) => item.item).toList(),
+            checked: snapshot.shopping
+                .asMap()
+                .entries
+                .where((entry) => entry.value.checked)
+                .map((entry) => entry.key)
+                .toSet(),
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _showTipIfNeeded(int index) async {
     final preferences = await SharedPreferences.getInstance();
     var seen =
-        preferences.getBool('vineat_page_tutorial_${_pageKeys[index]}_v1') ??
+        preferences.getBool('vineat_page_tutorial_${_pageKeys[index]}_v2') ??
         false;
     if (!seen && AppServices.configured) {
       try {
@@ -142,7 +198,7 @@ class _AppShellState extends State<AppShell>
         );
         if (seen) {
           await preferences.setBool(
-            'vineat_page_tutorial_${_pageKeys[index]}_v1',
+            'vineat_page_tutorial_${_pageKeys[index]}_v2',
             true,
           );
         }
@@ -158,7 +214,7 @@ class _AppShellState extends State<AppShell>
   Future<void> _dismissPageTip() async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setBool(
-      'vineat_page_tutorial_${_pageKeys[_index]}_v1',
+      'vineat_page_tutorial_${_pageKeys[_index]}_v2',
       true,
     );
     if (AppServices.configured) {
@@ -171,8 +227,27 @@ class _AppShellState extends State<AppShell>
     if (mounted) setState(() => _showPageTip = false);
   }
 
+  Future<void> _advancePageTip() async {
+    final next = _index + 1;
+    await _dismissPageTip();
+    if (mounted && next < _pages.length) _selectTab(next);
+  }
+
   @override
   void dispose() {
+    appRouteObserver.unsubscribe(this);
+    HouseholdService.instance.active.removeListener(
+      _handleActiveHouseholdChanged,
+    );
+    if (AppServices.configured) {
+      unawaited(
+        HouseholdDataRepository.instance.watchHouseholdChanges(
+          householdId: null,
+          onSnapshot: (_) {},
+        ),
+      );
+    }
+    if (activeAppTabIndex.value == _index) activeAppTabIndex.value = -1;
     tutorialPageRequest.removeListener(_handleTutorialRequest);
     _tabTransition.dispose();
     super.dispose();
@@ -185,6 +260,7 @@ class _AppShellState extends State<AppShell>
       _index = value;
       _showPageTip = false;
     });
+    activeAppTabIndex.value = value;
     _showTipIfNeeded(value);
     if (MediaQuery.of(context).disableAnimations) {
       _tabTransition.value = 1;
@@ -196,228 +272,177 @@ class _AppShellState extends State<AppShell>
   @override
   Widget build(BuildContext context) {
     final useRail = MediaQuery.sizeOf(context).width >= 720;
-    return Scaffold(
-      body: Column(
-        children: [
-          ValueListenableBuilder<String?>(
-            valueListenable: HouseholdDataRepository.instance.syncStatus,
-            builder: (context, status, _) => status == null
-                ? const SizedBox.shrink()
-                : Material(
-                    color: status.startsWith('Đang')
-                        ? const Color(0xFFE8F2FF)
-                        : const Color(0xFFFFF4E5),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 7, 4, 7),
-                      child: Row(
-                        children: [
-                          Icon(
-                            status.startsWith('Đang')
-                                ? Icons.sync
-                                : Icons.cloud_off_outlined,
-                            size: 18,
-                            color: status.startsWith('Đang')
-                                ? Colors.blueGrey
-                                : Colors.deepOrange,
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Scaffold(
+          body: Column(
+            children: [
+              ValueListenableBuilder<String?>(
+                valueListenable: HouseholdDataRepository.instance.syncStatus,
+                builder: (context, status, _) => status == null
+                    ? const SizedBox.shrink()
+                    : Material(
+                        color: status.startsWith('Đang')
+                            ? const Color(0xFFE8F2FF)
+                            : const Color(0xFFFFF4E5),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 7, 4, 7),
+                          child: Row(
+                            children: [
+                              Icon(
+                                status.startsWith('Đang')
+                                    ? Icons.sync
+                                    : Icons.cloud_off_outlined,
+                                size: 18,
+                                color: status.startsWith('Đang')
+                                    ? Colors.blueGrey
+                                    : Colors.deepOrange,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  status,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Ẩn thông báo',
+                                visualDensity: VisualDensity.compact,
+                                onPressed: () =>
+                                    HouseholdDataRepository
+                                            .instance
+                                            .syncStatus
+                                            .value =
+                                        null,
+                                icon: const Icon(Icons.close, size: 18),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              status,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 11),
-                            ),
+                        ),
+                      ),
+              ),
+              Expanded(
+                child: Row(
+                  key: const ValueKey('app-body-row'),
+                  children: [
+                    if (useRail)
+                      NavigationRail(
+                        selectedIndex: _index,
+                        onDestinationSelected: _selectTab,
+                        labelType: NavigationRailLabelType.all,
+                        backgroundColor: Colors.white,
+                        indicatorColor: const Color(0xFFE7F8F1),
+                        destinations: const [
+                          NavigationRailDestination(
+                            icon: Icon(Icons.home_outlined),
+                            selectedIcon: Icon(Icons.home),
+                            label: Text('Trang chủ'),
                           ),
-                          IconButton(
-                            tooltip: 'Ẩn thông báo',
-                            visualDensity: VisualDensity.compact,
-                            onPressed: () =>
-                                HouseholdDataRepository
-                                        .instance
-                                        .syncStatus
-                                        .value =
-                                    null,
-                            icon: const Icon(Icons.close, size: 18),
+                          NavigationRailDestination(
+                            icon: Icon(Icons.document_scanner_outlined),
+                            label: Text('Scan'),
+                          ),
+                          NavigationRailDestination(
+                            icon: Icon(Icons.restaurant_menu),
+                            label: Text('Món ăn'),
+                          ),
+                          NavigationRailDestination(
+                            icon: Icon(Icons.shopping_basket_outlined),
+                            label: Text('Đi chợ'),
+                          ),
+                          NavigationRailDestination(
+                            icon: Icon(Icons.bar_chart_rounded),
+                            label: Text('Báo cáo'),
                           ),
                         ],
                       ),
+                    Expanded(
+                      child: AnimatedBuilder(
+                        animation: _tabTransition,
+                        child: SizedBox.expand(
+                          child: IndexedStack(
+                            index: _index,
+                            children: [
+                              for (var i = 0; i < _pages.length; i++)
+                                TickerMode(
+                                  enabled: i == _index,
+                                  child: _pages[i],
+                                ),
+                            ],
+                          ),
+                        ),
+                        builder: (context, child) {
+                          final progress = Curves.easeOutCubic.transform(
+                            _tabTransition.value,
+                          );
+                          return Opacity(
+                            opacity: .88 + (.12 * progress),
+                            child: Transform.translate(
+                              offset: Offset(
+                                _transitionDirection * 10 * (1 - progress),
+                                0,
+                              ),
+                              child: child,
+                            ),
+                          );
+                        },
+                      ),
                     ),
-                  ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          if (_showPageTip)
-            _PageCoachCard(
+          bottomNavigationBar: useRail
+              ? null
+              : NavigationBar(
+                  height: 68,
+                  selectedIndex: _index,
+                  backgroundColor: Colors.white,
+                  indicatorColor: const Color(0xFFE7F8F1),
+                  labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+                  onDestinationSelected: _selectTab,
+                  destinations: const [
+                    NavigationDestination(
+                      icon: Icon(Icons.home_outlined),
+                      selectedIcon: Icon(Icons.home),
+                      label: 'Trang chủ',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.document_scanner_outlined),
+                      label: 'Scan',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.restaurant_menu),
+                      label: 'Món ăn',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.shopping_basket_outlined),
+                      label: 'Đi chợ',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.bar_chart_rounded),
+                      label: 'Báo cáo',
+                    ),
+                  ],
+                ),
+        ),
+        if (_showPageTip)
+          Positioned.fill(
+            child: AnchoredTutorialCoachmark(
+              targetKey: tutorialTargetKeys[_index],
               title: _pageTips[_index].$1,
               description: _pageTips[_index].$2,
-              onDismiss: _dismissPageTip,
-            ),
-          Expanded(
-            child: Row(
-              key: const ValueKey('app-body-row'),
-              children: [
-                if (useRail)
-                  NavigationRail(
-                    selectedIndex: _index,
-                    onDestinationSelected: _selectTab,
-                    labelType: NavigationRailLabelType.all,
-                    backgroundColor: Colors.white,
-                    indicatorColor: const Color(0xFFE7F8F1),
-                    destinations: const [
-                      NavigationRailDestination(
-                        icon: Icon(Icons.home_outlined),
-                        selectedIcon: Icon(Icons.home),
-                        label: Text('Trang chủ'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.document_scanner_outlined),
-                        label: Text('Scan'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.restaurant_menu),
-                        label: Text('Món ăn'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.shopping_basket_outlined),
-                        label: Text('Đi chợ'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.bar_chart_rounded),
-                        label: Text('Báo cáo'),
-                      ),
-                    ],
-                  ),
-                Expanded(
-                  child: AnimatedBuilder(
-                    animation: _tabTransition,
-                    child: SizedBox.expand(
-                      child: IndexedStack(
-                        index: _index,
-                        children: [
-                          for (var i = 0; i < _pages.length; i++)
-                            TickerMode(enabled: i == _index, child: _pages[i]),
-                        ],
-                      ),
-                    ),
-                    builder: (context, child) {
-                      final progress = Curves.easeOutCubic.transform(
-                        _tabTransition.value,
-                      );
-                      return Opacity(
-                        opacity: .88 + (.12 * progress),
-                        child: Transform.translate(
-                          offset: Offset(
-                            _transitionDirection * 10 * (1 - progress),
-                            0,
-                          ),
-                          child: child,
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
+              step: _index + 1,
+              totalSteps: _pages.length,
+              onNext: _advancePageTip,
+              onSkip: _dismissPageTip,
             ),
           ),
-        ],
-      ),
-      bottomNavigationBar: useRail
-          ? null
-          : NavigationBar(
-              height: 68,
-              selectedIndex: _index,
-              backgroundColor: Colors.white,
-              indicatorColor: const Color(0xFFE7F8F1),
-              labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-              onDestinationSelected: _selectTab,
-              destinations: const [
-                NavigationDestination(
-                  icon: Icon(Icons.home_outlined),
-                  selectedIcon: Icon(Icons.home),
-                  label: 'Trang chủ',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.document_scanner_outlined),
-                  label: 'Scan',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.restaurant_menu),
-                  label: 'Món ăn',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.shopping_basket_outlined),
-                  label: 'Đi chợ',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.bar_chart_rounded),
-                  label: 'Báo cáo',
-                ),
-              ],
-            ),
-    );
-  }
-}
-
-class _PageCoachCard extends StatelessWidget {
-  const _PageCoachCard({
-    required this.title,
-    required this.description,
-    required this.onDismiss,
-  });
-
-  final String title;
-  final String description;
-  final VoidCallback onDismiss;
-
-  @override
-  Widget build(BuildContext context) {
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    return AnimatedSize(
-      duration: reduceMotion
-          ? Duration.zero
-          : const Duration(milliseconds: 200),
-      curve: Curves.easeOutCubic,
-      child: Container(
-        width: double.infinity,
-        margin: const EdgeInsets.fromLTRB(14, 8, 14, 8),
-        padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFFE8FBF4),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFC9F1E1)),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.lightbulb_outline, color: Color(0xFF079669)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF253043),
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    description,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      height: 1.35,
-                      color: Color(0xFF586477),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 4),
-            TextButton(onPressed: onDismiss, child: const Text('Đã hiểu')),
-          ],
-        ),
-      ),
+      ],
     );
   }
 }

@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'app_services.dart';
+import 'app_tutorial.dart';
 import 'food_detail.dart';
 import 'food_image.dart';
 import 'fridge_showcase.dart';
@@ -232,13 +233,17 @@ class _FridgeScreenState extends State<FridgeScreen> {
                   child: ListView(
                     padding: const EdgeInsets.all(14),
                     children: [
-                      SmartFridgeShowcase(
-                        inventoryCount: inventoryFoods.length,
-                        expiringCount: warningCount + expiredCount,
-                        onInventoryTap: () =>
-                            setState(() => _showOnlyAttention = false),
-                        onExpiringTap: () =>
-                            setState(() => _showOnlyAttention = true),
+                      ValueListenableBuilder<int>(
+                        valueListenable: activeAppTabIndex,
+                        builder: (context, activeTab, _) => SmartFridgeShowcase(
+                          active: activeTab == 0,
+                          inventoryCount: inventoryFoods.length,
+                          expiringCount: warningCount + expiredCount,
+                          onInventoryTap: () =>
+                              setState(() => _showOnlyAttention = false),
+                          onExpiringTap: () =>
+                              setState(() => _showOnlyAttention = true),
+                        ),
                       ),
                       const SizedBox(height: 12),
                       LayoutBuilder(
@@ -462,6 +467,7 @@ class _FridgeScreenState extends State<FridgeScreen> {
               right: 20,
               bottom: 18,
               child: FloatingActionButton(
+                key: tutorialTargetKeys[0],
                 heroTag: 'add-food',
                 onPressed: _addFood,
                 backgroundColor: _green,
@@ -1478,6 +1484,7 @@ class _ScanScreenState extends State<ScanScreen>
           padding: const EdgeInsets.all(16),
           children: [
             _InputMethodCard(
+              key: tutorialTargetKeys[1],
               onScan: () => _pickReceipt(ImageSource.gallery),
               onTemplate: _chooseTemplate,
               onManual: _manualEntry,
@@ -1706,6 +1713,7 @@ class _ScanScreenState extends State<ScanScreen>
 
 class _InputMethodCard extends StatelessWidget {
   const _InputMethodCard({
+    super.key,
     required this.onScan,
     required this.onTemplate,
     required this.onManual,
@@ -2620,7 +2628,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
       'Dễ',
       '90% có sẵn',
       15,
-      'Cá chua · Dưa leo · Hành lá',
+      'Cá thu · Dưa leo · Hành lá',
     ),
     (
       'Đậu hũ sốt cà chua',
@@ -2676,6 +2684,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
               padding: const EdgeInsets.all(14),
               children: [
                 TextField(
+                  key: tutorialTargetKeys[2],
                   onChanged: (value) => setState(() => query = value),
                   decoration: InputDecoration(
                     hintText: 'Tìm món ăn...',
@@ -2841,10 +2850,11 @@ class _RecipeCard extends StatelessWidget {
             Stack(
               children: [
                 Image.asset(
-                  '$_assetRoot${image == 0 ? 'search-image' : 'search-image($image)'}',
+                  recipeImageAssetFor(name, image),
                   height: 158,
                   width: double.infinity,
                   fit: BoxFit.cover,
+                  cacheWidth: 1200,
                 ),
                 Positioned(
                   top: 9,
@@ -3118,6 +3128,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                     ),
                   );
                   final addButton = FilledButton.icon(
+                    key: tutorialTargetKeys[3],
                     onPressed: _showAddItemDialog,
                     icon: const Icon(Icons.add),
                     label: const Text('Thêm món'),

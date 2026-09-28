@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vineat_app/src/app.dart' show VineatApp;
+import 'package:vineat_app/src/app_tutorial.dart'
+    show AnchoredTutorialCoachmark, tutorialTargetKeys;
 import 'package:vineat_app/src/food_detail.dart' show FoodDetailScreen;
 import 'package:vineat_app/src/inventory_store.dart';
 import 'package:vineat_app/src/profile_screen.dart' show ProfileScreen;
+import 'package:vineat_app/src/recipe_detail.dart' show recipeImageAssetFor;
 import 'package:vineat_app/src/screens.dart' show FridgeScreen;
 
 void setTestViewport(WidgetTester tester, Size size) {
@@ -21,14 +24,33 @@ void setTestViewport(WidgetTester tester, Size size) {
 }
 
 void main() {
+  test('recipe catalog entries use their matching bundled photo', () {
+    const expected = {
+      'Mì cay trứng lòng đào': 'spicy-noodles-egg',
+      'Canh rau muống nấu tôm': 'water-spinach-shrimp-soup',
+      'Bò xào cải thảo': 'beef-cabbage-stir-fry',
+      'Bánh mì ốp la trứng gà': 'banh-mi-egg',
+      'Cá basa kho tiêu': 'caramel-braised-basa',
+      'Salad cá thu dầu mè': 'mackerel-sesame-salad',
+      'Đậu hũ sốt cà chua': 'tofu-tomato-sauce',
+      'Phở bò tái': 'pho-bo-tai',
+    };
+    for (final entry in expected.entries) {
+      expect(
+        recipeImageAssetFor(entry.key, 0),
+        'assets/recipes/${entry.value}.webp',
+      );
+    }
+  });
+
   setUp(() {
     SharedPreferences.setMockInitialValues({
       'vineat_tutorial_completed_v1': true,
-      'vineat_page_tutorial_home_v1': true,
-      'vineat_page_tutorial_scan_v1': true,
-      'vineat_page_tutorial_recipes_v1': true,
-      'vineat_page_tutorial_shopping_v1': true,
-      'vineat_page_tutorial_reports_v1': true,
+      'vineat_page_tutorial_home_v2': true,
+      'vineat_page_tutorial_scan_v2': true,
+      'vineat_page_tutorial_recipes_v2': true,
+      'vineat_page_tutorial_shopping_v2': true,
+      'vineat_page_tutorial_reports_v2': true,
     });
     // These helpers reset in-memory fixtures synchronously. Their queued
     // SharedPreferences cleanup must not hold the next widget test open.
@@ -36,7 +58,7 @@ void main() {
     unawaited(resetDemoShopping());
   });
 
-  testWidgets('first visit tips stay in layout and guide each app tab', (
+  testWidgets('first visit coachmarks target actions and guide each app tab', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
@@ -45,38 +67,51 @@ void main() {
     await tester.pumpWidget(const VineatApp());
     await tester.pumpAndSettle();
     expect(find.text('Bắt đầu với ViNeat'), findsNothing);
-    expect(find.text('Mẹo tủ lạnh'), findsOneWidget);
-    await tester.tap(find.text('Đã hiểu'));
-    await tester.pumpAndSettle();
-
-    const tabs = ['Scan', 'Món ăn', 'Đi chợ', 'Báo cáo'];
     const tips = [
+      'Mẹo tủ lạnh',
       'Mẹo quét hóa đơn',
       'Mẹo gợi ý món ăn',
       'Mẹo đi chợ',
       'Mẹo báo cáo',
     ];
-    for (var index = 0; index < tabs.length; index++) {
-      await tester.tap(find.text(tabs[index]));
-      await tester.pumpAndSettle();
+    expect(find.text('1/5'), findsOneWidget);
+    for (var index = 0; index < tips.length; index++) {
       expect(find.text(tips[index]), findsOneWidget);
-      await tester.tap(find.text('Đã hiểu'));
+      await tester.tap(find.text(index == tips.length - 1 ? 'Xong' : 'Tiếp'));
       await tester.pumpAndSettle();
-      expect(
-        tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
-        index + 1,
-      );
+      if (index < tips.length - 1) {
+        expect(
+          tester
+              .widget<NavigationBar>(find.byType(NavigationBar))
+              .selectedIndex,
+          index + 1,
+        );
+      }
     }
     expect(find.text('Báo cáo'), findsOneWidget);
+    expect(find.text('Giá trị thực phẩm đang theo dõi'), findsOneWidget);
     await tester.tap(find.text('Trang chủ'));
     await tester.pumpAndSettle();
     expect(find.text('Tủ lạnh của bạn'), findsOneWidget);
     expect(
       (await SharedPreferences.getInstance()).getBool(
-        'vineat_page_tutorial_home_v1',
+        'vineat_page_tutorial_home_v2',
       ),
       isTrue,
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('first-use spotlight fits a compact 320dp phone', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    setTestViewport(tester, const Size(320, 568));
+
+    await tester.pumpWidget(const VineatApp());
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AnchoredTutorialCoachmark), findsOneWidget);
+    expect(tutorialTargetKeys[0].currentContext, isNotNull);
+    expect(find.text('Tiếp').hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

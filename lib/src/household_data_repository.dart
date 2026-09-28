@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -46,6 +47,13 @@ class HouseholdDataRepository {
   final _shoppingInventoryLinks = <String, String>{};
   Map<String, String> _shoppingIds = {};
   String? _loadedScope;
+  RealtimeChannel? _realtimeChannel;
+  String? _realtimeHouseholdId;
+  ValueChanged<HouseholdDataSnapshot>? _onRealtimeSnapshot;
+  Timer? _realtimeRefreshTimer;
+  int _realtimeGeneration = 0;
+  bool _refreshingRealtimeSnapshot = false;
+  bool _refreshAgain = false;
 
   String? get _householdId => HouseholdService.instance.active.value?.id;
 
@@ -174,6 +182,100 @@ class HouseholdDataRepository {
       shopping: shopping,
       events: events,
     );
+  }
+
+  /// Keeps the active household snapshot fresh across devices. The server-side
+  /// filter and RLS ensure the channel only wakes this client's own household.
+  Future<void> watchHouseholdChanges({
+    required String? householdId,
+    required ValueChanged<HouseholdDataSnapshot> onSnapshot,
+  }) async {
+    if (!AppServices.configured) return;
+    if (_realtimeHouseholdId == householdId && _realtimeChannel != null) {
+      _onRealtimeSnapshot = onSnapshot;
+      return;
+    }
+
+    final generation = ++_realtimeGeneration;
+    _realtimeRefreshTimer?.cancel();
+    _refreshAgain = false;
+    _onRealtimeSnapshot = onSnapshot;
+    final previous = _realtimeChannel;
+    _realtimeChannel = null;
+    _realtimeHouseholdId = householdId;
+    if (previous != null) {
+      try {
+        await AppServices.client.removeChannel(previous);
+      } catch (_) {
+        // A failed unsubscribe must not prevent the new household from loading.
+      }
+    }
+    if (generation != _realtimeGeneration || householdId == null) return;
+
+    final channel = AppServices.client.channel('vineat-household-$householdId');
+    void onChange(PostgresChangePayload _) =>
+        _scheduleRealtimeRefresh(generation);
+    for (final table in const [
+      'inventory_items',
+      'shopping_items',
+      'inventory_events',
+      'recipe_cook_events',
+    ]) {
+      channel.onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: table,
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'household_id',
+          value: householdId,
+        ),
+        callback: onChange,
+      );
+    }
+    _realtimeChannel = channel;
+    channel.subscribe();
+  }
+
+  void _scheduleRealtimeRefresh(int generation) {
+    if (generation != _realtimeGeneration) return;
+    _realtimeRefreshTimer?.cancel();
+    _realtimeRefreshTimer = Timer(const Duration(milliseconds: 450), () {
+      unawaited(_refreshRealtimeSnapshot(generation));
+    });
+  }
+
+  Future<void> _refreshRealtimeSnapshot(int generation) async {
+    if (_refreshingRealtimeSnapshot) {
+      _refreshAgain = true;
+      return;
+    }
+    _refreshingRealtimeSnapshot = true;
+    const syncingMessage = 'Đang cập nhật dữ liệu gia đình…';
+    try {
+      do {
+        _refreshAgain = false;
+        final householdId = _realtimeHouseholdId;
+        if (generation != _realtimeGeneration || householdId == null) return;
+        syncStatus.value = syncingMessage;
+        try {
+          final snapshot = await loadActiveHousehold();
+          if (generation == _realtimeGeneration &&
+              HouseholdService.instance.active.value?.id == householdId) {
+            _onRealtimeSnapshot?.call(snapshot);
+          }
+        } catch (_) {
+          if (generation == _realtimeGeneration) {
+            syncStatus.value =
+                'Có thay đổi mới nhưng chưa tải được dữ liệu. Kiểm tra kết nối.';
+          }
+        } finally {
+          if (syncStatus.value == syncingMessage) syncStatus.value = null;
+        }
+      } while (_refreshAgain && generation == _realtimeGeneration);
+    } finally {
+      _refreshingRealtimeSnapshot = false;
+    }
   }
 
   Future<bool> hasImportedDemoInventory(String householdId) async {
