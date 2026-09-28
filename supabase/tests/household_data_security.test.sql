@@ -1,6 +1,6 @@
 begin;
 
-select plan(33);
+select plan(37);
 
 select ok(
   not has_table_privilege('anon', 'public.households', 'select')
@@ -69,8 +69,63 @@ select ok(
   and has_table_privilege('authenticated', 'storage.objects', 'select')
   and has_table_privilege('authenticated', 'storage.objects', 'insert')
   and has_table_privilege('authenticated', 'storage.objects', 'update')
-  and not has_table_privilege('authenticated', 'storage.objects', 'delete'),
+  and not has_table_privilege('authenticated', 'storage.objects', 'delete')
+  and not exists (
+    select 1 from pg_policies
+    where schemaname = 'storage' and tablename = 'objects' and cmd = 'DELETE'
+  ),
   'private family photos expose only the authenticated upload/read/overwrite operations'
+);
+
+select ok(
+  (select public = false
+      and file_size_limit = 10485760
+      and allowed_mime_types @> array['image/jpeg', 'image/png', 'image/webp']::text[]
+      and cardinality(allowed_mime_types) = 3
+   from storage.buckets where id = 'household-food'),
+  'the family photo bucket is private and limits upload size and image formats'
+);
+
+select ok(
+  exists (
+    select 1 from pg_policies
+    where schemaname = 'storage' and tablename = 'objects'
+      and policyname = 'household members read food photos' and cmd = 'SELECT'
+      and 'authenticated'::name = any(roles)
+      and qual like '%household-food%'
+      and qual like '%storage.foldername%'
+      and qual like '%is_household_member%'
+  ),
+  'photo read policy scopes objects to authenticated household members'
+);
+
+select ok(
+  exists (
+    select 1 from pg_policies
+    where schemaname = 'storage' and tablename = 'objects'
+      and policyname = 'household members add food photos' and cmd = 'INSERT'
+      and 'authenticated'::name = any(roles)
+      and with_check like '%household-food%'
+      and with_check like '%storage.foldername%'
+      and with_check like '%is_household_member%'
+  ),
+  'photo upload policy checks the destination household folder'
+);
+
+select ok(
+  exists (
+    select 1 from pg_policies
+    where schemaname = 'storage' and tablename = 'objects'
+      and policyname = 'household members update food photos' and cmd = 'UPDATE'
+      and 'authenticated'::name = any(roles)
+      and qual like '%household-food%'
+      and qual like '%storage.foldername%'
+      and qual like '%is_household_member%'
+      and with_check like '%household-food%'
+      and with_check like '%storage.foldername%'
+      and with_check like '%is_household_member%'
+  ),
+  'photo overwrite policy checks both the existing and destination household'
 );
 
 insert into auth.users (
