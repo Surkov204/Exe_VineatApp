@@ -1,0 +1,2 @@
+[functions.household]
+verify_jwt = true

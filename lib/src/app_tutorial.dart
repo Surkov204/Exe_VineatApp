@@ -96,7 +96,9 @@ class _TutorialDialogState extends State<_TutorialDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Trang ${_index + 1}/${_tutorialPages.length} · ${page.title}'),
+            Text(
+              'Trang ${_index + 1}/${_tutorialPages.length} · ${page.title}',
+            ),
             const SizedBox(height: 10),
             Text(page.description),
             const SizedBox(height: 18),

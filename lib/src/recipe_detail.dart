@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 
+import 'app_services.dart';
 import 'global_search.dart';
+import 'household_data_repository.dart';
+import 'inventory_store.dart';
 import 'profile_screen.dart';
+import 'recipe_cook_dialog.dart';
 
 const _green = Color(0xFF079669);
 const _ink = Color(0xFF253043);
@@ -9,10 +13,22 @@ const _muted = Color(0xFF98A2B3);
 const _assetRoot = 'design_reference/home/page_files/';
 
 class RecipeIngredient {
-  const RecipeIngredient(this.name, this.amount, this.available);
+  const RecipeIngredient(
+    this.name,
+    this.amount,
+    this.available, {
+    this.inventoryFood,
+  });
   final String name;
   final String amount;
   final bool available;
+  final FoodSummary? inventoryFood;
+}
+
+class CookedIngredientUse {
+  const CookedIngredientUse(this.food, this.quantity);
+  final FoodSummary food;
+  final double quantity;
 }
 
 class RecipeStep {
@@ -85,21 +101,39 @@ class RecipeDetailData {
         : isTofu
         ? 280
         : 380;
+    FoodSummary? findFood(String ingredient) {
+      final normalized = ingredient.trim().toLowerCase();
+      for (final food in inventoryFoods) {
+        final stockName = food.$1.trim().toLowerCase();
+        if (stockName == normalized ||
+            stockName.contains(normalized) ||
+            normalized.contains(stockName)) {
+          return food;
+        }
+      }
+      return null;
+    }
+
+    final ingredientNames = [...names, 'Tỏi', 'Dầu ăn', 'Gia vị'];
     final ingredientList = <RecipeIngredient>[
-      for (var i = 0; i < names.length; i++)
+      for (var i = 0; i < ingredientNames.length; i++)
         RecipeIngredient(
-          names[i],
+          ingredientNames[i],
           i == 0
               ? (isBeef ? '300g' : '2 phần')
               : i == 1
               ? '1 phần'
               : '1 nhánh',
-          i < 2,
+          findFood(ingredientNames[i]) != null,
+          inventoryFood: findFood(ingredientNames[i]),
         ),
-      const RecipeIngredient('Tỏi', '2 tép', false),
-      const RecipeIngredient('Dầu ăn', '1 muỗng', false),
-      const RecipeIngredient('Gia vị', 'vừa đủ', true),
     ];
+    final availableCount = ingredientList
+        .where((ingredient) => ingredient.available)
+        .length;
+    final actualMatch = ingredientList.isEmpty
+        ? 0
+        : (availableCount * 100 / ingredientList.length).round();
     final action = isSoup
         ? 'nấu canh'
         : isSalad
@@ -120,7 +154,7 @@ class RecipeDetailData {
           : 'Bữa tối',
       time: _fix(time),
       level: _fix(level),
-      match: _fix(match),
+      match: '$actualMatch% có sẵn',
       image: image,
       servings: servings,
       calories: calories,
@@ -219,6 +253,85 @@ class RecipeDetailData {
 class RecipeDetailScreen extends StatelessWidget {
   const RecipeDetailScreen({super.key, required this.recipe});
   final RecipeDetailData recipe;
+
+  Future<void> _recordCooked(BuildContext context) async {
+    final uses = await showDialog<List<(FoodSummary, double)>>(
+      context: context,
+      builder: (_) => RecipeCookDialog(
+        ingredients: recipe.ingredients
+            .where((ingredient) => ingredient.inventoryFood != null)
+            .map((ingredient) => (ingredient.name, ingredient.inventoryFood!))
+            .toList(),
+      ),
+    );
+    if (uses == null || !context.mounted) return;
+    if (AppServices.configured) {
+      try {
+        HouseholdDataRepository.instance.syncStatus.value =
+            'Đang ghi nhận món đã nấu…';
+        await HouseholdDataRepository.instance.recordRecipeCooked(
+          recipe.name,
+          uses,
+        );
+        final snapshot = await HouseholdDataRepository.instance
+            .loadActiveHousehold();
+        replaceInventoryFromRemote(
+          records: snapshot.inventory,
+          events: snapshot.events,
+        );
+        HouseholdDataRepository.instance.syncStatus.value = null;
+      } catch (_) {
+        HouseholdDataRepository.instance.syncStatus.value =
+            'Chưa ghi nhận được món đã nấu. Tủ lạnh chưa thay đổi; hãy thử lại.';
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Chưa thể cập nhật bữa nấu. Vui lòng thử lại.'),
+            ),
+          );
+        }
+        return;
+      }
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Đã ghi nhận bữa nấu và cập nhật ${uses.length} nguyên liệu',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    for (final use in uses) {
+      final current = inventoryFoods.where((food) => food.$1 == use.$1.$1);
+      if (current.isEmpty ||
+          use.$2 > InventoryItemRecord.fromSummary(current.first).quantity) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Số lượng trong tủ vừa thay đổi. Mở lại món và thử lần nữa nhé.',
+            ),
+          ),
+        );
+        return;
+      }
+    }
+    for (final use in uses) {
+      final current = inventoryFoods.firstWhere((food) => food.$1 == use.$1.$1);
+      if (!consumeFoodAmount(current, use.$2)) return;
+    }
+    recordRecipeCooked(recipe.name);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Đã ghi nhận bữa nấu và cập nhật ${uses.length} nguyên liệu',
+          ),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -319,7 +432,7 @@ class RecipeDetailScreen extends StatelessWidget {
                         ),
                       ),
                       const Text(
-                        'Chia sẻ thành quả với cả nhà nhé!',
+                        'Chọn lượng đã dùng để cập nhật tủ lạnh chính xác.',
                         style: TextStyle(fontSize: 11, color: _muted),
                       ),
                       const SizedBox(height: 12),
@@ -327,11 +440,11 @@ class RecipeDetailScreen extends StatelessWidget {
                         children: [
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: () => ScaffoldMessenger.of(context)
-                                  .showSnackBar(
+                              onPressed: () =>
+                                  ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
                                       content: Text(
-                                        'Đã tạo nội dung chia sẻ món ăn',
+                                        'Tính năng chia sẻ sẽ được bổ sung sau.',
                                       ),
                                     ),
                                   ),
@@ -342,12 +455,7 @@ class RecipeDetailScreen extends StatelessWidget {
                           const SizedBox(width: 9),
                           Expanded(
                             child: FilledButton.icon(
-                              onPressed: () =>
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Đã đánh dấu nấu xong!'),
-                                    ),
-                                  ),
+                              onPressed: () => _recordCooked(context),
                               icon: const Icon(Icons.done_all, size: 17),
                               label: const Text('Đã nấu xong'),
                             ),
@@ -595,6 +703,37 @@ class _Ingredients extends StatelessWidget {
               ),
             ),
           ),
+          if (recipe.ingredients.any(
+            (ingredient) => !ingredient.available,
+          )) ...[
+            const SizedBox(height: 6),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  final missing = recipe.ingredients
+                      .where((ingredient) => !ingredient.available)
+                      .map((ingredient) => ingredient.name)
+                      .toSet()
+                      .toList();
+                  final added = addMissingShoppingItems(recipe.name, missing);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        added == 0
+                            ? 'Nguyên liệu thiếu đã có trong danh sách đi chợ.'
+                            : 'Đã thêm $added nguyên liệu thiếu vào danh sách đi chợ.',
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.add_shopping_cart_outlined),
+                label: Text(
+                  'Thêm ${recipe.ingredients.where((ingredient) => !ingredient.available).length} món thiếu vào đi chợ',
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

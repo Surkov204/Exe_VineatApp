@@ -43,8 +43,12 @@ Future<void> showGlobalSearch(BuildContext context) async {
           detailResult.status,
           detailResult.image,
         ));
-      } else if (detailResult == true) {
+      } else if (detailResult == FoodRemovalResult.deleted) {
         removeFoodFromInventory(original);
+      } else if (detailResult == FoodRemovalResult.consumed) {
+        markFoodConsumed(original);
+      } else if (detailResult == FoodRemovalResult.discarded) {
+        markFoodConsumed(original, discarded: true);
       }
     }
   } else if (result.recipe != null) {

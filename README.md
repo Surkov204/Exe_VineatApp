@@ -1,54 +1,89 @@
 # ViNeat
 
-ViNeat là prototype Flutter cho quản lý thực phẩm gia đình: theo dõi tủ lạnh,
-scan hóa đơn, gợi ý món ăn, danh sách đi chợ và báo cáo giảm lãng phí.
+ViNeat là prototype Flutter quản lý thực phẩm gia đình: tủ lạnh, scan hóa đơn,
+gợi ý món ăn, danh sách đi chợ, báo cáo sử dụng/lãng phí và chia sẻ dữ liệu gia đình.
 
-## Chạy bản demo Android
+## Chạy demo local
 
-1. Cài Flutter stable và Android SDK, sau đó kiểm tra bằng `flutter doctor`.
-2. Chạy `flutter pub get` để cài thư viện lưu cục bộ, chọn ảnh và OCR.
-3. Kết nối máy Android hoặc mở emulator rồi chạy `flutter run`.
-4. Tạo APK demo bằng `flutter build apk --release`.
+Không cần Supabase để trình diễn các luồng local-first. Cần Flutter stable và Android
+SDK (hoặc emulator/thiết bị Android):
 
-## Luồng demo khuyến nghị
+```powershell
+flutter pub get
+flutter analyze
+flutter test
+flutter run
+```
 
-Checklist thao tác và tiêu chí nghiệm thu nằm trong
+Tạo APK cài thử:
+
+```powershell
+flutter build apk --release
+```
+
+File đầu ra: `build/app/outputs/flutter-apk/app-release.apk`. APK này dùng để demo
+local, ký debug; không dùng để phát hành cửa hàng.
+
+## Chạy với Supabase
+
+1. Cấu hình email OTP và Google trong Supabase Auth. Thêm redirect URI
+   `com.vineat.team.vineat_app://login-callback` vào danh sách Redirect URLs.
+2. Cài Supabase CLI, liên kết project rồi áp dụng các migration theo thứ tự:
+
+   ```powershell
+   supabase link --project-ref <project-ref>
+   supabase db push
+   supabase functions deploy household
+   ```
+
+3. Chạy app với URL và khóa public của project (anon/publishable):
+
+   ```powershell
+   flutter run `
+     --dart-define=SUPABASE_URL=https://<project-ref>.supabase.co `
+     --dart-define=SUPABASE_PUBLISHABLE_KEY=<publishable-or-anon-key>
+   ```
+
+   Có thể dùng `SUPABASE_ANON_KEY` thay cho `SUPABASE_PUBLISHABLE_KEY` để tương
+   thích project dùng khóa anon cũ. Không đưa `service_role` hoặc Google client
+   secret vào app hay build arguments.
+
+Khi đã cấu hình, app dùng email OTP/Google, tạo hoặc tham gia gia đình bằng mã,
+chọn gia đình đang hoạt động và đồng bộ tủ lạnh/đi chợ/sự kiện qua Supabase.
+RLS giới hạn dữ liệu theo thành viên; ảnh gia đình nằm trong storage bucket private.
+Không có credentials của project trong repository, vì vậy chưa thể xác minh luồng
+đăng nhập và đồng bộ trên project hosted chỉ bằng bộ test local.
+
+## Kịch bản demo
+
+Checklist 5–7 phút và các tiêu chí nghiệm thu ở
 [`DEMO_CHECKLIST.md`](DEMO_CHECKLIST.md).
 
-1. Lần đầu mở app, đi qua hướng dẫn 5 trang; có thể mở lại tại Hồ sơ → Trợ giúp.
-2. Mở **Tủ lạnh**, bấm dấu `+` và thêm một thực phẩm mới. Thống kê và cảnh báo
-   thay đổi ngay lập tức.
-3. Mở **Scan**, chọn ảnh thư viện hoặc chụp hóa đơn, rồi rà soát/sửa các dòng
-   OCR trước khi bấm **Thêm vào tủ**. Nếu quyền camera/ảnh bị từ chối, chọn
-   **Hóa đơn mẫu** hoặc **Nhập thủ công** trong thẻ phương thức đầu vào.
-4. Mở **Món ăn**, tìm một món và xem chi tiết; nút **Đã nấu xong** hiển thị
-   phản hồi trực quan.
-5. Mở **Đi chợ**, thêm món, đánh dấu đã mua, xóa và thử **Hoàn tác**. Danh sách
-   và tủ lạnh được lưu cục bộ trên Android qua `shared_preferences`.
-6. Mở **Báo cáo** để xem thống kê hiện tại; các biểu đồ lịch sử chưa có dữ liệu
-   sẽ được gắn nhãn minh họa, không đại diện cho số liệu thật.
+Luồng gợi ý: hoàn tất hướng dẫn → thêm thực phẩm → quét/chỉnh hóa đơn → xem món ăn
+và nguyên liệu còn thiếu → đánh dấu món đi chợ đã mua → xác nhận đã dùng thực phẩm
+→ xem báo cáo. Mẫu mặc định được dùng khi chạy local; các sự kiện sử dụng/lãng phí
+trong báo cáo chỉ xuất hiện sau thao tác xác nhận, không giả làm lịch sử thực tế.
 
-## Ghi chú hiện trạng
+## Trạng thái và giới hạn đã biết
 
-- Bản hiện tại là demo local-first, chưa kết nối backend production.
-- Workspace hiện không chứa file Proposal hoặc source backend riêng; schema
-  Supabase bên dưới được dựng theo các màn hình và luồng dữ liệu đang có trong
-  Flutter để không chặn buổi demo.
-- Schema nền tảng và migration bảo vệ luồng mã gia đình nằm trong
-  `supabase/migrations/`. Chúng chưa được áp dụng vào project hosted; app hiện
-  chưa có đăng nhập, repository từ xa hoặc đồng bộ giữa nhiều thiết bị.
-- Dữ liệu tủ lạnh và danh sách đi chợ được lưu trên thiết bị; nếu cache hỏng,
-  app tự quay về dữ liệu mẫu để vẫn mở được.
-- Scan dùng ML Kit OCR trên Android/iOS, sau đó parser nhận diện cửa hàng,
-  ngày mua, dòng sản phẩm, số lượng và giá. Người dùng có thể sửa kết quả
-  trước khi thêm vào tủ; dữ liệu vẫn được lưu cục bộ cho tới khi nối Supabase.
+- Bố cục mobile dùng thanh tab cố định; màn hình rộng chuyển qua navigation rail.
+  Các trang giữ trạng thái khi đổi tab, nội dung cuộn trong vùng riêng và chuyển tab
+  bằng hiệu ứng ngắn, tự tắt khi thiết bị bật giảm chuyển động.
+- Hướng dẫn 5 bước xuất hiện lần đầu và có thể mở lại từ Hồ sơ → Trợ giúp.
+- Danh mục món ăn/công thức hiện là catalog cục bộ; phần gợi ý kiểm tra nguyên liệu
+  từ tủ lạnh và nút thêm nguyên liệu thiếu vào danh sách đi chợ.
+- OCR xử lý ảnh trên thiết bị. Các dòng đã xác nhận có thể nhập vào kho local hoặc
+  household đã đăng nhập; chưa có job OCR nền hay quản trị lịch sử hóa đơn đầy đủ.
+- Chưa có asset 3D được cấp phép trong source, nên bản hiện tại không giả lập tính
+  năng mô hình tủ lạnh 3D. Hiệu ứng ưu tiên nhẹ để không làm chậm thiết bị.
+- File Proposal và backend riêng không có trong workspace hiện tại. Schema trong
+  `supabase/migrations/` được dựng theo luồng hiện có của ứng dụng và cần đối chiếu
+  Proposal/backend gốc trước khi coi là schema production.
 
-## Kiểm chứng hiện tại
+## Kiểm chứng
 
-- `dart analyze lib test`: không có issue.
-- `flutter test --no-pub`: 9 bài unit/widget pass; bao phủ điều hướng 5 tab,
-  hướng dẫn lần đầu, 320×568/360×640, tablet 900×800, luồng mua sắm, báo cáo,
-  chọn ảnh và parser OCR hóa đơn tiếng Việt.
-- `flutter build apk --release --no-pub`: pass; tạo
-  `build/app/outputs/flutter-apk/app-release.apk` (85.4 MB, APK đa kiến trúc,
-  ký debug để demo local; chưa dùng phát hành cửa hàng ứng dụng).
+Chạy `flutter analyze` và `flutter test`. Widget tests bao phủ onboarding, chuyển tab,
+layout nhỏ, tablet, nhập món, mua hàng → tủ lạnh, công thức → đi chợ, dùng thực phẩm
+→ báo cáo và chọn ảnh; unit tests bao phủ parser OCR hóa đơn tiếng Việt. Kiểm tra
+đăng nhập OAuth, email thật, RLS/storage và đồng bộ giữa hai tài khoản cần project
+Supabase cùng thiết bị/emulator có cấu hình provider.
