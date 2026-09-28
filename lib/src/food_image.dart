@@ -11,6 +11,7 @@ class FoodImage extends StatelessWidget {
     super.key,
     required this.name,
     required this.assetIndex,
+    this.imagePath,
     this.width,
     this.height,
     this.fit = BoxFit.cover,
@@ -18,6 +19,7 @@ class FoodImage extends StatelessWidget {
 
   final String name;
   final int assetIndex;
+  final String? imagePath;
   final double? width;
   final double? height;
   final BoxFit fit;
@@ -27,7 +29,7 @@ class FoodImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final customPath = customFoodImagePaths[name];
+    final customPath = imagePath ?? customFoodImagePaths[name];
     if (customPath == null || customPath.isEmpty) {
       return Image.asset(
         _fallbackAsset,

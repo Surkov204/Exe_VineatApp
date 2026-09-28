@@ -57,7 +57,7 @@ begin
   insert into public.profiles (id) values (v_user_id)
     on conflict (id) do nothing;
   loop
-    v_invite_code := upper(encode(public.gen_random_bytes(8), 'hex'));
+    v_invite_code := upper(encode(extensions.gen_random_bytes(8), 'hex'));
     insert into public.households (name, invite_code, created_by)
     values (v_name, v_invite_code, v_user_id)
     on conflict (invite_code) do nothing
@@ -120,7 +120,7 @@ begin
       using errcode = '42501';
   end if;
   loop
-    v_invite_code := upper(encode(public.gen_random_bytes(8), 'hex'));
+    v_invite_code := upper(encode(extensions.gen_random_bytes(8), 'hex'));
     begin
       update public.households set invite_code = v_invite_code
         where id = p_household_id;

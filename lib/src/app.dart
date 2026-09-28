@@ -187,20 +187,22 @@ class _AppShellState extends State<AppShell>
   }
 
   Future<void> _showTipIfNeeded(int index) async {
+    final userId = AppServices.configured
+        ? AppServices.client.auth.currentUser?.id ?? 'signed-out'
+        : 'local';
+    final preferenceKey = pageTutorialPreferenceKey(
+      userId: userId,
+      pageKey: _pageKeys[index],
+    );
     final preferences = await SharedPreferences.getInstance();
-    var seen =
-        preferences.getBool('vineat_page_tutorial_${_pageKeys[index]}_v2') ??
-        false;
+    var seen = preferences.getBool(preferenceKey) ?? false;
     if (!seen && AppServices.configured) {
       try {
         seen = await HouseholdDataRepository.instance.isTutorialPageCompleted(
           _pageKeys[index],
         );
         if (seen) {
-          await preferences.setBool(
-            'vineat_page_tutorial_${_pageKeys[index]}_v2',
-            true,
-          );
+          await preferences.setBool(preferenceKey, true);
         }
       } catch (_) {
         // Keep first-use help available even when the network is offline.
@@ -212,15 +214,20 @@ class _AppShellState extends State<AppShell>
   }
 
   Future<void> _dismissPageTip() async {
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setBool(
-      'vineat_page_tutorial_${_pageKeys[_index]}_v2',
-      true,
+    final pageIndex = _index;
+    final userId = AppServices.configured
+        ? AppServices.client.auth.currentUser?.id ?? 'signed-out'
+        : 'local';
+    final preferenceKey = pageTutorialPreferenceKey(
+      userId: userId,
+      pageKey: _pageKeys[pageIndex],
     );
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(preferenceKey, true);
     if (AppServices.configured) {
       unawaited(
         HouseholdDataRepository.instance
-            .markTutorialPageCompleted(_pageKeys[_index])
+            .markTutorialPageCompleted(_pageKeys[pageIndex])
             .catchError((_) {}),
       );
     }

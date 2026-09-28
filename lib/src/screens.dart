@@ -378,6 +378,7 @@ class _FridgeScreenState extends State<FridgeScreen> {
                         ),
                       ...displayedFoods.map(
                         (f) => _FoodTile(
+                          summary: f,
                           name: f.$1,
                           detail: f.$2,
                           status: f.$3,
@@ -385,12 +386,18 @@ class _FridgeScreenState extends State<FridgeScreen> {
                           onDeleted: () {
                             removeFoodFromInventory(f);
                           },
-                          onUpdated: (food) => updateFoodInInventory(f, (
-                            food.name,
-                            '${food.quantity} · ${food.price}',
-                            food.status,
-                            food.image,
-                          )),
+                          onUpdated: (food) => updateFoodInInventory(
+                            f,
+                            FoodSummary.fromLegacy(
+                              id: f.id,
+                              name: food.name,
+                              detail: '${food.quantity} · ${food.price}',
+                              status: food.status,
+                              imageIndex: food.image,
+                              imagePath: f.imagePath,
+                              note: food.note,
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 14),
@@ -601,13 +608,17 @@ class _AddFoodDialogState extends State<_AddFoodDialog> {
       _ => 0,
     };
     final foodName = name.text.trim();
-    if (imagePath != null) customFoodImagePaths[foodName] = imagePath;
-    Navigator.pop<FoodSummary>(context, (
-      foodName,
-      '${quantity.text.trim()} $unit · $displayPrice',
-      status,
-      image,
-    ));
+    Navigator.pop<FoodSummary>(
+      context,
+      FoodSummary.fromLegacy(
+        name: foodName,
+        detail: '${quantity.text.trim()} $unit · $displayPrice',
+        status: status,
+        imageIndex: image,
+        expiryDate: expiryDate,
+        imagePath: imagePath,
+      ),
+    );
   }
 
   String _money(String value) =>
@@ -1024,6 +1035,7 @@ class _AlertChip extends StatelessWidget {
 
 class _FoodTile extends StatelessWidget {
   const _FoodTile({
+    required this.summary,
     required this.name,
     required this.detail,
     required this.status,
@@ -1031,6 +1043,7 @@ class _FoodTile extends StatelessWidget {
     required this.onDeleted,
     required this.onUpdated,
   });
+  final FoodSummary summary;
   final String name, detail, status;
   final int image;
   final VoidCallback onDeleted;
@@ -1044,7 +1057,7 @@ class _FoodTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () async {
-          final original = (name, detail, status, image);
+          final original = summary;
           final result = await Navigator.of(context).push<Object?>(
             MaterialPageRoute(
               builder: (_) => FoodDetailScreen(
@@ -1053,6 +1066,8 @@ class _FoodTile extends StatelessWidget {
                   detail: detail,
                   status: status,
                   image: image,
+                  id: summary.id,
+                  imagePath: summary.imagePath,
                 ),
               ),
             ),
@@ -1077,6 +1092,7 @@ class _FoodTile extends StatelessWidget {
                 child: FoodImage(
                   name: name,
                   assetIndex: image,
+                  imagePath: summary.imagePath,
                   width: 48,
                   height: 48,
                   fit: BoxFit.cover,
@@ -1311,11 +1327,13 @@ class _ScanScreenState extends State<ScanScreen>
           : days <= 3
           ? 'Còn ${days < 1 ? 1 : days} ngày'
           : 'Tươi ngon';
-      return (
-        item.normalizedName,
-        '${_decimal(item.quantity)} ${item.unit} · ${_formatVnd(item.totalPriceVnd)}',
-        status,
-        inventoryFoods.length % 10,
+      return FoodSummary.fromLegacy(
+        name: item.normalizedName,
+        detail:
+            '${_decimal(item.quantity)} ${item.unit} · ${_formatVnd(item.totalPriceVnd)}',
+        status: status,
+        imageIndex: inventoryFoods.length % 10,
+        expiryDate: item.estimatedExpiryDate,
       );
     });
     try {
@@ -3026,6 +3044,17 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
       builder: (_) => const AddShoppingItemDialog(),
     );
     if (result != null && mounted) {
+      final duplicate = items.any(
+        (item) =>
+            item.$1.trim().toLowerCase() == result.$1.trim().toLowerCase() &&
+            item.$5.trim().toLowerCase() == result.$5.trim().toLowerCase(),
+      );
+      if (duplicate) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${result.$1} đã có trong danh sách')),
+        );
+        return;
+      }
       setState(() {
         items.add(result);
         selectedCategory = 0;
@@ -3052,6 +3081,17 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
         ..addAll(shiftedChecked);
     });
     _shoppingMutationRevision++;
+    if (AppServices.configured &&
+        HouseholdService.instance.active.value != null) {
+      unawaited(
+        HouseholdDataRepository.instance
+            .deleteShoppingItem(removed)
+            .catchError(
+              (_) => HouseholdDataRepository.instance.syncStatus.value =
+                  'Chưa xóa được món khỏi danh sách chung. Hãy kiểm tra mạng và thử lại.',
+            ),
+      );
+    }
     _persistShopping();
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -3159,7 +3199,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
               ),
               const SizedBox(height: 14),
               SizedBox(
-                height: 42,
+                height: 48,
                 child: ListView(
                   scrollDirection: Axis.horizontal,
                   children: categories.asMap().entries.map((entry) {

@@ -1,13 +1,186 @@
 import 'dart:math';
 
-typedef FoodSummary = (String, String, String, int);
 typedef ShoppingSummary = (String, String, String, String, String);
 
 String shoppingIdentity(ShoppingSummary item) =>
     '${item.$1.trim().toLowerCase()}|${item.$5.trim().toLowerCase()}';
 
-/// Typed form used by persistence/reporting. UI records remain compatible with
-/// the prototype during this staged migration.
+/// Inventory data has a stable identity and typed quantities. `$1`-`$4` are
+/// temporary presentation adapters for the existing compact widgets.
+class FoodSummary {
+  FoodSummary({
+    String? id,
+    required this.name,
+    required this.quantity,
+    required this.unit,
+    required this.priceVnd,
+    required this.imageIndex,
+    this.expiry,
+    this.imagePath,
+    this.note = '',
+  }) : id = id ?? newLocalId();
+
+  final String id;
+  final String name;
+  final double quantity;
+  final String unit;
+  final int priceVnd;
+  final DateTime? expiry;
+  final int imageIndex;
+  final String? imagePath;
+  final String note;
+
+  String get $1 => name;
+  String get $2 =>
+      '${_formatQuantity(quantity)} $unit · ${_formatVnd(priceVnd)}';
+  String get $3 => _freshnessLabel(expiry);
+  int get $4 => imageIndex;
+
+  factory FoodSummary.fromLegacy({
+    String? id,
+    required String name,
+    required String detail,
+    required String status,
+    required int imageIndex,
+    DateTime? expiryDate,
+    String? imagePath,
+    String note = '',
+  }) {
+    final parts = detail.split('·').map((part) => part.trim()).toList();
+    final amount = _parseAmount(parts.firstOrNull ?? '1 phần');
+    final price = parts.length > 1
+        ? int.tryParse(parts.last.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0
+        : 0;
+    final days = int.tryParse(
+      RegExp(r'\d+').firstMatch(status)?.group(0) ?? '',
+    );
+    final expiryFromStatus = status == 'Hết hạn'
+        ? DateTime.now().subtract(const Duration(days: 1))
+        : status.contains('Còn')
+        ? DateTime.now().add(Duration(days: days ?? 2))
+        : DateTime.now().add(const Duration(days: 14));
+    return FoodSummary(
+      id: id,
+      name: name,
+      quantity: amount.$1,
+      unit: amount.$2,
+      priceVnd: price,
+      expiry: expiryDate ?? expiryFromStatus,
+      imageIndex: imageIndex,
+      imagePath: imagePath,
+      note: note,
+    );
+  }
+
+  factory FoodSummary.fromRecord(InventoryItemRecord record) => FoodSummary(
+    id: record.id,
+    name: record.name,
+    quantity: record.quantity,
+    unit: record.unit,
+    priceVnd: record.priceVnd,
+    expiry: record.expiry,
+    imageIndex: record.imageIndex,
+    imagePath: record.imagePath,
+    note: record.note,
+  );
+
+  FoodSummary copyWith({
+    String? id,
+    String? name,
+    double? quantity,
+    String? unit,
+    int? priceVnd,
+    DateTime? expiry,
+    int? imageIndex,
+    String? imagePath,
+    String? note,
+  }) => FoodSummary(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    quantity: quantity ?? this.quantity,
+    unit: unit ?? this.unit,
+    priceVnd: priceVnd ?? this.priceVnd,
+    expiry: expiry ?? this.expiry,
+    imageIndex: imageIndex ?? this.imageIndex,
+    imagePath: imagePath ?? this.imagePath,
+    note: note ?? this.note,
+  );
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'name': name,
+    'quantity': quantity,
+    'unit': unit,
+    'price_vnd': priceVnd,
+    'expiry': expiry?.toIso8601String(),
+    'image_index': imageIndex,
+    'image_path': imagePath,
+    'note': note,
+  };
+
+  factory FoodSummary.fromJson(Map value) {
+    final name = value['name'] as String? ?? 'Thực phẩm';
+    final imageIndex =
+        (value['image_index'] as num?)?.toInt() ??
+        (value['image'] as num?)?.toInt() ??
+        0;
+    if (value['quantity'] is num) {
+      return FoodSummary(
+        id: value['id'] as String?,
+        name: name,
+        quantity: (value['quantity'] as num).toDouble(),
+        unit: value['unit'] as String? ?? 'phần',
+        priceVnd: (value['price_vnd'] as num?)?.toInt() ?? 0,
+        expiry: DateTime.tryParse(
+          value['expiry'] as String? ?? value['expiry_date'] as String? ?? '',
+        ),
+        imageIndex: imageIndex,
+        imagePath:
+            value['image_path'] as String? ?? value['imagePath'] as String?,
+        note: value['note'] as String? ?? '',
+      );
+    }
+    return FoodSummary.fromLegacy(
+      id: value['id'] as String?,
+      name: name,
+      detail: value['detail'] as String? ?? '1 phần',
+      status: value['status'] as String? ?? 'Tươi ngon',
+      imageIndex: imageIndex,
+      imagePath: value['imagePath'] as String?,
+      note: value['note'] as String? ?? '',
+    );
+  }
+
+  @override
+  bool operator ==(Object other) => other is FoodSummary && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
+}
+
+String _freshnessLabel(DateTime? expiry) {
+  if (expiry == null) return 'Tươi ngon';
+  final today = DateTime.now();
+  final days = DateTime(
+    expiry.year,
+    expiry.month,
+    expiry.day,
+  ).difference(DateTime(today.year, today.month, today.day)).inDays;
+  if (days < 0) return 'Hết hạn';
+  if (days <= 3) return 'Còn ${days == 0 ? 1 : days} ngày';
+  return 'Tươi ngon';
+}
+
+String _formatQuantity(double value) => value == value.roundToDouble()
+    ? value.toInt().toString()
+    : value
+          .toString()
+          .replaceFirst(RegExp(r'0+$'), '')
+          .replaceFirst(RegExp(r'\.$'), '');
+
+String _formatVnd(int value) =>
+    '${value.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => '.')}đ';
+
 class InventoryItemRecord {
   const InventoryItemRecord({
     required this.id,
@@ -36,29 +209,16 @@ class InventoryItemRecord {
     String? id,
     String? imagePath,
   }) {
-    final detail = summary.$2.split('·').map((part) => part.trim()).toList();
-    final amount = _parseAmount(detail.firstOrNull ?? '1 phần');
-    final parsedPrice = detail.length > 1
-        ? int.tryParse(detail.last.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0
-        : 0;
-    final days = int.tryParse(
-      RegExp(r'\d+').firstMatch(summary.$3)?.group(0) ?? '',
-    );
-    final expiry = summary.$3 == 'Hết hạn'
-        ? DateTime.now().subtract(const Duration(days: 1))
-        : summary.$3.contains('Còn')
-        ? DateTime.now().add(Duration(days: days ?? 2))
-        : DateTime.now().add(const Duration(days: 14));
     return InventoryItemRecord(
-      id: id ?? newLocalId(),
-      name: summary.$1,
-      quantity: amount.$1,
-      unit: amount.$2,
-      priceVnd: parsedPrice,
-      expiry: expiry,
-      imageIndex: summary.$4,
-      imagePath: imagePath,
-      note: '',
+      id: id ?? summary.id,
+      name: summary.name,
+      quantity: summary.quantity,
+      unit: summary.unit,
+      priceVnd: summary.priceVnd,
+      expiry: summary.expiry,
+      imageIndex: summary.imageIndex,
+      imagePath: imagePath ?? summary.imagePath,
+      note: summary.note,
     );
   }
 
@@ -141,11 +301,11 @@ class ShoppingInventoryLink {
   };
 
   factory ShoppingInventoryLink.fromJson(Map value) => ShoppingInventoryLink(
-    food: (
-      value['name'] as String? ?? '',
-      value['detail'] as String? ?? '',
-      value['status'] as String? ?? 'Tươi ngon',
-      (value['image'] as num?)?.toInt() ?? 0,
+    food: FoodSummary.fromLegacy(
+      name: value['name'] as String? ?? '',
+      detail: value['detail'] as String? ?? '',
+      status: value['status'] as String? ?? 'Tươi ngon',
+      imageIndex: (value['image'] as num?)?.toInt() ?? 0,
     ),
     createdByPurchase: value['created'] as bool? ?? false,
   );

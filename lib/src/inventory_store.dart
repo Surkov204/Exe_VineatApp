@@ -23,17 +23,67 @@ class ShoppingSnapshot {
 /// It intentionally keeps the prototype's compact tuple at the UI boundary,
 /// but owns persistence so every screen reads the same inventory and a demo
 /// survives an app restart on Android.
-const demoInventorySeed = <FoodSummary>[
-  ('Rau muống', '2 bó · 15.000đ', 'Còn 2 ngày', 0),
-  ('Cà chua', '5 quả · 25.000đ', 'Tươi ngon', 1),
-  ('Thịt heo ba chỉ', '500 gram · 65.000đ', 'Còn 3 ngày', 2),
-  ('Cá basa fillet', '3 miếng · 45.000đ', 'Hết hạn', 3),
-  ('Trứng gà', '10 quả · 35.000đ', 'Tươi ngon', 4),
-  ('Cải thảo', '1 cây · 20.000đ', 'Tươi ngon', 5),
-  ('Gạo ST25', '5 kg · 175.000đ', 'Tươi ngon', 6),
-  ('Nước mắm Nam Ngư', '1 chai · 42.000đ', 'Tươi ngon', 7),
-  ('Sữa tươi Vinamilk', '2 hộp · 32.000đ', 'Tươi ngon', 8),
-  ('Hành lá', '1 bó · 3.000đ', 'Tươi ngon', 9),
+final demoInventorySeed = <FoodSummary>[
+  FoodSummary.fromLegacy(
+    name: 'Rau muống',
+    detail: '2 bó · 15.000đ',
+    status: 'Còn 2 ngày',
+    imageIndex: 0,
+  ),
+  FoodSummary.fromLegacy(
+    name: 'Cà chua',
+    detail: '5 quả · 25.000đ',
+    status: 'Tươi ngon',
+    imageIndex: 1,
+  ),
+  FoodSummary.fromLegacy(
+    name: 'Thịt heo ba chỉ',
+    detail: '500 gram · 65.000đ',
+    status: 'Còn 3 ngày',
+    imageIndex: 2,
+  ),
+  FoodSummary.fromLegacy(
+    name: 'Cá basa fillet',
+    detail: '3 miếng · 45.000đ',
+    status: 'Hết hạn',
+    imageIndex: 3,
+  ),
+  FoodSummary.fromLegacy(
+    name: 'Trứng gà',
+    detail: '10 quả · 35.000đ',
+    status: 'Tươi ngon',
+    imageIndex: 4,
+  ),
+  FoodSummary.fromLegacy(
+    name: 'Cải thảo',
+    detail: '1 cây · 20.000đ',
+    status: 'Tươi ngon',
+    imageIndex: 5,
+  ),
+  FoodSummary.fromLegacy(
+    name: 'Gạo ST25',
+    detail: '5 kg · 175.000đ',
+    status: 'Tươi ngon',
+    imageIndex: 6,
+  ),
+  FoodSummary.fromLegacy(
+    name: 'Nước mắm Nam Ngư',
+    detail: '1 chai · 42.000đ',
+    status: 'Tươi ngon',
+    imageIndex: 7,
+  ),
+  FoodSummary.fromLegacy(
+    name: 'Sữa tươi Vinamilk',
+    detail: '2 hộp · 32.000đ',
+    status: 'Tươi ngon',
+    imageIndex: 8,
+  ),
+  FoodSummary.fromLegacy(
+    name: 'Hành lá',
+    detail: '1 bó · 3.000đ',
+    status: 'Tươi ngon',
+    imageIndex: 9,
+  ),
 ];
 
 final inventoryFoods = <FoodSummary>[...demoInventorySeed];
@@ -42,7 +92,6 @@ final inventoryRevision = ValueNotifier<int>(0);
 final customFoodImagePaths = <String, String>{};
 final inventoryEvents = <InventoryEvent>[];
 final shoppingInventoryLinks = <String, ShoppingInventoryLink>{};
-final inventoryFoodIds = <String, String>{};
 final shoppingItems = AppServices.configured
     ? <ShoppingSummary>[]
     : <ShoppingSummary>[
@@ -162,7 +211,6 @@ Future<void> restoreInventory() async {
 
     final restored = <FoodSummary>[];
     final restoredImagePaths = <String, String>{};
-    final restoredIds = <String, String>{};
     for (final value in decoded) {
       if (value is! Map) continue;
       final name = value['name'];
@@ -173,13 +221,22 @@ Future<void> restoreInventory() async {
           detail is String &&
           status is String &&
           image is num) {
-        restored.add((name, detail, status, image.toInt()));
         final id = value['id'];
-        if (id is String && id.isNotEmpty) restoredIds[name] = id;
+        final imageId = id is String && id.isNotEmpty ? id : null;
         final imagePath = value['imagePath'];
         if (imagePath is String && imagePath.isNotEmpty) {
-          restoredImagePaths[name] = imagePath;
+          if (imageId != null) restoredImagePaths[imageId] = imagePath;
         }
+        restored.add(
+          FoodSummary.fromLegacy(
+            id: imageId,
+            name: name,
+            detail: detail,
+            status: status,
+            imageIndex: image.toInt(),
+            imagePath: imagePath is String ? imagePath : null,
+          ),
+        );
       }
     }
     inventoryFoods
@@ -188,9 +245,6 @@ Future<void> restoreInventory() async {
     customFoodImagePaths
       ..clear()
       ..addAll(restoredImagePaths);
-    inventoryFoodIds
-      ..clear()
-      ..addAll(restoredIds);
     final encodedEvents = preferences.getString(_eventsKey);
     if (encodedEvents != null) {
       final rawEvents = jsonDecode(encodedEvents);
@@ -213,12 +267,11 @@ Future<void> _persistInventory() {
     inventoryFoods
         .map(
           (food) => {
-            'name': food.$1,
+            ...food.toJson(),
             'detail': food.$2,
             'status': food.$3,
             'image': food.$4,
-            'imagePath': customFoodImagePaths[food.$1],
-            'id': inventoryFoodIds.putIfAbsent(food.$1, newLocalId),
+            'imagePath': customFoodImagePaths[food.id] ?? food.imagePath,
           },
         )
         .toList(),
@@ -246,19 +299,18 @@ void addFoodsToInventory(Iterable<FoodSummary> foods) {
   for (final food in foods) {
     inventoryFoods.add(food);
     _recordEvent('added', food);
-    final id = inventoryFoodIds.putIfAbsent(food.$1, newLocalId);
+    final id = food.id;
     _withRemoteSync(() async {
       await HouseholdDataRepository.instance.upsertInventory(
         food,
         id,
-        localImagePath: customFoodImagePaths[food.$1],
+        localImagePath: customFoodImagePaths[food.id] ?? food.imagePath,
       );
       await HouseholdDataRepository.instance.logInventoryEvent(
         id: id,
         eventType: 'added',
         quantity: InventoryItemRecord.fromSummary(food).quantity,
         valueVnd: InventoryItemRecord.fromSummary(food).priceVnd,
-        name: food.$1,
         metadata: {'unit': InventoryItemRecord.fromSummary(food).unit},
       );
     });
@@ -273,32 +325,28 @@ void removeFoodFromInventory(FoodSummary food) {
 
 void _removeFood(FoodSummary food, {required String eventType}) {
   if (!inventoryFoods.contains(food)) return;
-  final id = inventoryFoodIds[food.$1];
+  final id = food.id;
   _recordEvent(eventType, food);
   inventoryFoods.remove(food);
-  customFoodImagePaths.remove(food.$1);
-  inventoryFoodIds.remove(food.$1);
-  if (id != null) {
-    _withRemoteSync(() async {
-      if (eventType == 'consumed' || eventType == 'discarded') {
-        await HouseholdDataRepository.instance.consumeInventory(
-          id,
-          InventoryItemRecord.fromSummary(food).quantity,
-          discarded: eventType == 'discarded',
-        );
-      } else {
-        await HouseholdDataRepository.instance.logInventoryEvent(
-          id: id,
-          eventType: 'updated',
-          quantity: 0,
-          valueVnd: 0,
-          name: food.$1,
-          metadata: {'action': 'removed'},
-        );
-        await HouseholdDataRepository.instance.deleteInventory(id);
-      }
-    });
-  }
+  customFoodImagePaths.remove(food.id);
+  _withRemoteSync(() async {
+    if (eventType == 'consumed' || eventType == 'discarded') {
+      await HouseholdDataRepository.instance.consumeInventory(
+        id,
+        InventoryItemRecord.fromSummary(food).quantity,
+        discarded: eventType == 'discarded',
+      );
+    } else {
+      await HouseholdDataRepository.instance.logInventoryEvent(
+        id: id,
+        eventType: 'updated',
+        quantity: 0,
+        valueVnd: 0,
+        metadata: {'action': 'removed'},
+      );
+      await HouseholdDataRepository.instance.deleteInventory(id);
+    }
+  });
   inventoryRevision.value++;
   unawaited(_persistInventory());
 }
@@ -306,27 +354,21 @@ void _removeFood(FoodSummary food, {required String eventType}) {
 void updateFoodInInventory(FoodSummary before, FoodSummary after) {
   final index = inventoryFoods.indexOf(before);
   if (index < 0) return;
-  final id = inventoryFoodIds.remove(before.$1) ?? newLocalId();
-  inventoryFoods[index] = after;
-  inventoryFoodIds[after.$1] = id;
-  if (before.$1 != after.$1) {
-    final imagePath = customFoodImagePaths.remove(before.$1);
-    if (imagePath != null) customFoodImagePaths[after.$1] = imagePath;
-  }
+  final updated = after.copyWith(id: before.id);
+  inventoryFoods[index] = updated;
   _recordEvent('updated', after);
   _withRemoteSync(() async {
     await HouseholdDataRepository.instance.upsertInventory(
-      after,
-      id,
-      localImagePath: customFoodImagePaths[after.$1],
+      updated,
+      updated.id,
+      localImagePath: customFoodImagePaths[updated.id] ?? updated.imagePath,
     );
     await HouseholdDataRepository.instance.logInventoryEvent(
-      id: id,
+      id: updated.id,
       eventType: 'updated',
-      quantity: InventoryItemRecord.fromSummary(after).quantity,
-      valueVnd: InventoryItemRecord.fromSummary(after).priceVnd,
-      name: after.$1,
-      metadata: {'unit': InventoryItemRecord.fromSummary(after).unit},
+      quantity: InventoryItemRecord.fromSummary(updated).quantity,
+      valueVnd: InventoryItemRecord.fromSummary(updated).priceVnd,
+      metadata: {'unit': updated.unit},
     );
   });
   inventoryRevision.value++;
@@ -366,7 +408,7 @@ bool consumeFoodAmount(
   if (index < 0 || amount <= 0) return false;
   final current = InventoryItemRecord.fromSummary(
     food,
-    imagePath: customFoodImagePaths[food.$1],
+    imagePath: customFoodImagePaths[food.id] ?? food.imagePath,
   );
   if (amount > current.quantity + 0.0001) return false;
   final consumedValue = current.quantity == 0
@@ -384,35 +426,30 @@ bool consumeFoodAmount(
     ),
   );
   final remaining = current.quantity - amount;
-  final id = inventoryFoodIds[food.$1];
+  final id = food.id;
   if (remaining <= 0.0001) {
     inventoryFoods.removeAt(index);
-    customFoodImagePaths.remove(food.$1);
-    inventoryFoodIds.remove(food.$1);
+    customFoodImagePaths.remove(food.id);
   } else {
     final remainingValue = (current.priceVnd - consumedValue).clamp(
       0,
       current.priceVnd,
     );
-    inventoryFoods[index] = (
-      food.$1,
-      '${_decimalAmount(remaining)} ${current.unit} · $remainingValueđ',
-      food.$3,
-      food.$4,
+    inventoryFoods[index] = food.copyWith(
+      quantity: remaining,
+      priceVnd: remainingValue,
     );
   }
   inventoryRevision.value++;
   unawaited(_persistInventory());
   unawaited(_persistEvents());
-  if (id != null) {
-    _withRemoteSync(
-      () => HouseholdDataRepository.instance.consumeInventory(
-        id,
-        amount,
-        discarded: discarded,
-      ),
-    );
-  }
+  _withRemoteSync(
+    () => HouseholdDataRepository.instance.consumeInventory(
+      id,
+      amount,
+      discarded: discarded,
+    ),
+  );
   return true;
 }
 
@@ -423,15 +460,12 @@ void replaceInventoryFromRemote({
   inventoryFoods
     ..clear()
     ..addAll(records.map(_summaryFromRecord));
-  inventoryFoodIds
-    ..clear()
-    ..addEntries(records.map((record) => MapEntry(record.name, record.id)));
   customFoodImagePaths
     ..clear()
     ..addEntries(
       records
           .where((record) => record.imagePath != null)
-          .map((record) => MapEntry(record.name, record.imagePath!)),
+          .map((record) => MapEntry(record.id, record.imagePath!)),
     );
   inventoryEvents
     ..clear()
@@ -456,37 +490,8 @@ void replaceShoppingFromRemote({
 }
 
 FoodSummary _summaryFromRecord(InventoryItemRecord record) {
-  final expiry = record.expiry;
-  final days = expiry == null
-      ? 14
-      : DateTime(expiry.year, expiry.month, expiry.day)
-            .difference(
-              DateTime(
-                DateTime.now().year,
-                DateTime.now().month,
-                DateTime.now().day,
-              ),
-            )
-            .inDays;
-  final status = days < 0
-      ? 'Hết hạn'
-      : days <= 3
-      ? 'Còn ${days == 0 ? 1 : days} ngày'
-      : 'Tươi ngon';
-  return (
-    record.name,
-    '${_formatAmount(record.quantity)} ${record.unit} · ${record.priceVnd}đ',
-    status,
-    record.imageIndex,
-  );
+  return FoodSummary.fromRecord(record);
 }
-
-String _formatAmount(double value) => value == value.roundToDouble()
-    ? value.toInt().toString()
-    : value
-          .toStringAsFixed(2)
-          .replaceFirst(RegExp(r'0+$'), '')
-          .replaceFirst(RegExp(r'\.$'), '');
 
 void _withRemoteSync(Future<void> Function() operation) {
   if (!AppServices.configured ||
@@ -514,17 +519,10 @@ String? _householdCacheScope() {
   return '$userId:$householdId';
 }
 
-String _decimalAmount(double value) => value == value.roundToDouble()
-    ? value.toInt().toString()
-    : value
-          .toStringAsFixed(2)
-          .replaceFirst(RegExp(r'0+$'), '')
-          .replaceFirst(RegExp(r'\.$'), '');
-
 void _recordEvent(String type, FoodSummary food) {
   final item = InventoryItemRecord.fromSummary(
     food,
-    imagePath: customFoodImagePaths[food.$1],
+    imagePath: customFoodImagePaths[food.id] ?? food.imagePath,
   );
   inventoryEvents.add(
     InventoryEvent(
@@ -568,11 +566,11 @@ void setShoppingPurchased(ShoppingSummary item, bool purchased) {
       );
     } else {
       final quantity = item.$2.split('·').first.trim();
-      final food = (
-        item.$1,
-        '$quantity · 0đ',
-        'Tươi ngon',
-        item.$5.hashCode.abs() % 20,
+      final food = FoodSummary.fromLegacy(
+        name: item.$1,
+        detail: '$quantity · 0đ',
+        status: 'Tươi ngon',
+        imageIndex: item.$5.hashCode.abs() % 20,
       );
       inventoryFoods.add(food);
       shoppingInventoryLinks[key] = ShoppingInventoryLink(
@@ -627,7 +625,6 @@ String _shoppingCategoryFor(String name) {
 
 Future<void> resetDemoInventory() async {
   customFoodImagePaths.clear();
-  inventoryFoodIds.clear();
   inventoryEvents.clear();
   inventoryFoods
     ..clear()
@@ -818,11 +815,7 @@ Future<void> persistShopping(
       try {
         HouseholdDataRepository.instance.syncStatus.value =
             'Đang đồng bộ danh sách đi chợ…';
-        final linkedIds = await HouseholdDataRepository.instance.saveShopping(
-          items,
-          checked,
-        );
-        inventoryFoodIds.addAll(linkedIds);
+        await HouseholdDataRepository.instance.saveShopping(items, checked);
         HouseholdDataRepository.instance.syncStatus.value = null;
       } catch (_) {
         HouseholdDataRepository.instance.syncStatus.value =

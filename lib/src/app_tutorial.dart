@@ -13,6 +13,11 @@ final tutorialTargetKeys = List<GlobalKey>.generate(
 /// The selected page is also used to pause embedded platform views off-screen.
 final activeAppTabIndex = ValueNotifier<int>(-1);
 
+String pageTutorialPreferenceKey({
+  required String userId,
+  required String pageKey,
+}) => 'vineat_page_tutorial_${userId}_${pageKey}_v3';
+
 const _tutorialPages = <_TutorialPage>[
   _TutorialPage(
     title: 'Tủ lạnh',
@@ -35,13 +40,13 @@ const _tutorialPages = <_TutorialPage>[
   _TutorialPage(
     title: 'Đi chợ',
     description:
-        'Thêm món cần mua, đánh dấu khi đã mua. Danh sách demo được lưu trên thiết bị này.',
+        'Thêm món cần mua và đánh dấu khi đã mua. Khi đăng nhập, danh sách được đồng bộ với các thành viên gia đình.',
     icon: Icons.shopping_basket_outlined,
   ),
   _TutorialPage(
     title: 'Báo cáo',
     description:
-        'Theo dõi các chỉ số hiện tại. Biểu đồ lịch sử có nhãn minh họa cho đến khi ứng dụng có dữ liệu theo dõi thật.',
+        'Xem giá trị tủ hiện tại và lịch sử từ thao tác đã ghi nhận; các chỉ số ước tính được ghi rõ để bạn dễ đối chiếu.',
     icon: Icons.bar_chart_rounded,
   ),
 ];

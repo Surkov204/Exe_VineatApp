@@ -56,6 +56,34 @@ RLS giới hạn dữ liệu theo thành viên; ảnh gia đình nằm trong sto
 Không có credentials của project trong repository, vì vậy chưa thể xác minh luồng
 đăng nhập và đồng bộ trên project hosted chỉ bằng bộ test local.
 
+### Backend local cho Android Emulator
+
+Để demo cả đăng nhập và dữ liệu gia đình mà chưa cần project cloud, cần Docker
+Desktop, Supabase CLI và Android Emulator:
+
+```powershell
+npx supabase start
+npx supabase test db --local
+```
+
+Ở Android Studio, thêm hai Dart defines vào cấu hình chạy Debug. Lấy giá trị
+`ANON_KEY` do `npx supabase start` in ra (hoặc `npx supabase status -o env`):
+
+```text
+SUPABASE_URL=http://10.0.2.2:54321
+SUPABASE_PUBLISHABLE_KEY=<local-anon-key>
+```
+
+`10.0.2.2` là địa chỉ máy Windows từ Android Emulator. HTTP này chỉ được bật
+trong Debug cho loopback/emulator; build Release từ chối URL không mã hóa. Email
+OTP của Supabase local xem trong Mailpit tại `http://localhost:54324`. Local
+Google OAuth chưa có client credentials nên cần project cloud để demo Google.
+Không đưa `SECRET_KEY`, `service_role` hoặc Google client secret vào app; không
+chia sẻ log `supabase status` vì trong đó có khóa local đặc quyền.
+
+`npx supabase db reset --local` sẽ xóa dữ liệu database local rồi áp lại toàn bộ
+migration; chỉ dùng nếu có thể bỏ dữ liệu demo đang lưu. Không thêm `--linked`.
+
 ## Kịch bản demo
 
 Checklist 5–7 phút và các tiêu chí nghiệm thu ở

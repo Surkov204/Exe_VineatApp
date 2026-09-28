@@ -39,12 +39,13 @@ class HouseholdDataSnapshot {
 class HouseholdDataRepository {
   HouseholdDataRepository._();
   static final HouseholdDataRepository instance = HouseholdDataRepository._();
-  String get _shoppingIdsKey =>
-      'vineat.remote.shopping_ids.v1.${AppServices.client.auth.currentUser?.id ?? 'user'}.${_householdId ?? 'none'}';
+  String _shoppingIdsKeyFor(String scope) =>
+      'vineat.remote.shopping_ids.v1.${scope.replaceFirst(':', '.')}';
 
   final syncStatus = ValueNotifier<String?>(null);
-  final _remoteImagePathsByName = <String, String>{};
+  final _remoteImagePathsById = <String, String>{};
   final _shoppingInventoryLinks = <String, String>{};
+  final _shoppingFingerprints = <String, String>{};
   Map<String, String> _shoppingIds = {};
   String? _loadedScope;
   RealtimeChannel? _realtimeChannel;
@@ -56,21 +57,31 @@ class HouseholdDataRepository {
   bool _refreshAgain = false;
 
   String? get _householdId => HouseholdService.instance.active.value?.id;
+  String get _currentScope =>
+      '${AppServices.client.auth.currentUser?.id ?? 'user'}:${_householdId ?? 'none'}';
 
-  Future<void> _ensureScope() async {
-    final scope =
-        '${AppServices.client.auth.currentUser?.id ?? 'user'}:${_householdId ?? 'none'}';
+  void _assertScope(String expectedScope) {
+    if (_currentScope != expectedScope) {
+      throw StateError('Gia đình/tài khoản đã đổi trong lúc đồng bộ.');
+    }
+  }
+
+  Future<void> _ensureScope([String? expectedScope]) async {
+    final scope = expectedScope ?? _currentScope;
+    _assertScope(scope);
     if (_loadedScope == scope) return;
     _loadedScope = scope;
-    _remoteImagePathsByName.clear();
+    _remoteImagePathsById.clear();
     _shoppingInventoryLinks.clear();
-    _foodIdsByName.clear();
+    _shoppingFingerprints.clear();
     _shoppingIds = {};
-    await _loadShoppingIds();
+    await _loadShoppingIds(scope);
+    _assertScope(scope);
   }
 
   Future<HouseholdDataSnapshot> loadActiveHousehold() async {
-    await _ensureScope();
+    final scope = _currentScope;
+    await _ensureScope(scope);
     final householdId = _householdId;
     if (householdId == null) {
       return const HouseholdDataSnapshot(
@@ -90,11 +101,10 @@ class HouseholdDataRepository {
     final allInventory = <InventoryItemRecord>[];
     for (final row in rows) {
       final id = row['id'] as String;
-      final name = row['name'] as String? ?? 'Thực phẩm';
       final imagePath = row['image_path'] as String?;
       String? viewPath;
       if (imagePath != null && imagePath.isNotEmpty) {
-        _remoteImagePathsByName[name] = imagePath;
+        _remoteImagePathsById[id] = imagePath;
         try {
           viewPath = await client.storage
               .from('household-food')
@@ -103,7 +113,6 @@ class HouseholdDataRepository {
           viewPath = null;
         }
       }
-      _foodIdsByName[name] = id;
       allInventory.add(_recordFromRow(row, imagePath: viewPath));
     }
     final inventory = allInventory.where((item) => item.quantity > 0).toList();
@@ -174,9 +183,7 @@ class HouseholdDataRepository {
       ),
     );
     events.sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
-    if (_householdId != householdId) {
-      throw StateError('The selected household changed during data loading.');
-    }
+    _assertScope(scope);
     return HouseholdDataSnapshot(
       inventory: inventory,
       shopping: shopping,
@@ -279,12 +286,17 @@ class HouseholdDataRepository {
   }
 
   Future<bool> hasImportedDemoInventory(String householdId) async {
+    final scope = _currentScope;
+    if (_householdId != householdId) {
+      throw StateError('Gia đình đang chọn đã thay đổi.');
+    }
     final rows = await AppServices.client
         .from('demo_imports')
         .select('id')
         .eq('household_id', householdId)
         .eq('import_key', 'local-demo-v1')
         .limit(1);
+    _assertScope(scope);
     return rows.isNotEmpty;
   }
 
@@ -292,6 +304,11 @@ class HouseholdDataRepository {
     required String householdId,
     required List<InventoryItemRecord> items,
   }) async {
+    final scope = _currentScope;
+    if (_householdId != householdId) {
+      throw StateError('Gia đình đang chọn đã thay đổi.');
+    }
+    await _ensureScope(scope);
     final payload = items
         .map(
           (item) => {
@@ -312,6 +329,7 @@ class HouseholdDataRepository {
         'p_items': payload,
       },
     );
+    _assertScope(scope);
     return imported is num ? imported.toInt() : 0;
   }
 
@@ -338,7 +356,8 @@ class HouseholdDataRepository {
   }
 
   Future<List<RemoteShoppingItem>> loadShoppingItems() async {
-    await _ensureScope();
+    final scope = _currentScope;
+    await _ensureScope(scope);
     final householdId = _householdId;
     if (householdId == null) return const [];
     final shoppingRows = await AppServices.client
@@ -348,12 +367,16 @@ class HouseholdDataRepository {
         )
         .eq('household_id', householdId)
         .order('created_at');
-    await _loadShoppingIds();
+    _assertScope(scope);
     final shopping = <RemoteShoppingItem>[];
     for (final row in shoppingRows) {
       final item = _shoppingFromRow(row);
       final id = row['id'] as String;
       _shoppingIds[shoppingIdentity(item)] = id;
+      _shoppingFingerprints[id] = _shoppingFingerprint(
+        item,
+        checked: row['checked_at'] != null,
+      );
       final inventoryId = row['inventory_item_id'] as String?;
       if (inventoryId != null) _shoppingInventoryLinks[id] = inventoryId;
       shopping.add(
@@ -365,7 +388,8 @@ class HouseholdDataRepository {
         ),
       );
     }
-    await _saveShoppingIds();
+    await _saveShoppingIds(scope);
+    _assertScope(scope);
     return shopping;
   }
 
@@ -413,10 +437,11 @@ class HouseholdDataRepository {
     String id, {
     String? localImagePath,
   }) async {
-    await _ensureScope();
+    final scope = _currentScope;
+    await _ensureScope(scope);
     final householdId = _householdId;
     if (householdId == null) return;
-    _foodIdsByName[food.$1] = id;
+    if (food.id != id) throw StateError('Inventory identity mismatch.');
     final record = InventoryItemRecord.fromSummary(
       food,
       id: id,
@@ -426,7 +451,9 @@ class HouseholdDataRepository {
       householdId,
       record,
       localImagePath,
+      scope,
     );
+    _assertScope(scope);
     await AppServices.client.from('inventory_items').upsert({
       'id': id,
       'household_id': householdId,
@@ -442,20 +469,24 @@ class HouseholdDataRepository {
       'source': 'manual',
       'created_by': AppServices.client.auth.currentUser?.id,
     });
+    _assertScope(scope);
   }
 
   Future<String?> _resolveImagePath(
     String householdId,
     InventoryItemRecord record,
     String? localImagePath,
+    String scope,
   ) async {
+    _assertScope(scope);
     if (localImagePath == null || localImagePath.isEmpty) {
-      return _remoteImagePathsByName[record.name];
+      return _remoteImagePathsById[record.id];
     }
     final uri = Uri.tryParse(localImagePath);
-    if (uri?.hasScheme == true) return _remoteImagePathsByName[record.name];
+    if (uri?.hasScheme == true) return _remoteImagePathsById[record.id];
     final file = File(localImagePath);
-    if (!await file.exists()) return _remoteImagePathsByName[record.name];
+    if (!await file.exists()) return _remoteImagePathsById[record.id];
+    _assertScope(scope);
     final extension = localImagePath.split('.').last.toLowerCase();
     final contentType = switch (extension) {
       'png' => 'image/png',
@@ -470,12 +501,14 @@ class HouseholdDataRepository {
           file,
           fileOptions: FileOptions(upsert: true, contentType: contentType),
         );
-    _remoteImagePathsByName[record.name] = path;
+    _assertScope(scope);
+    _remoteImagePathsById[record.id] = path;
     return path;
   }
 
   Future<void> deleteInventory(String id) async {
-    await _ensureScope();
+    final scope = _currentScope;
+    await _ensureScope(scope);
     final householdId = _householdId;
     if (householdId == null) return;
     await AppServices.client
@@ -483,6 +516,7 @@ class HouseholdDataRepository {
         .delete()
         .eq('id', id)
         .eq('household_id', householdId);
+    _assertScope(scope);
   }
 
   Future<void> consumeInventory(
@@ -490,7 +524,8 @@ class HouseholdDataRepository {
     double quantity, {
     required bool discarded,
   }) async {
-    await _ensureScope();
+    final scope = _currentScope;
+    await _ensureScope(scope);
     final householdId = _householdId;
     if (householdId == null) return;
     await AppServices.client.rpc(
@@ -501,6 +536,7 @@ class HouseholdDataRepository {
         'p_discarded': discarded,
       },
     );
+    _assertScope(scope);
   }
 
   Future<void> logInventoryEvent({
@@ -508,41 +544,61 @@ class HouseholdDataRepository {
     required String eventType,
     required double quantity,
     required int valueVnd,
-    required String name,
     Map<String, Object?> metadata = const {},
   }) async {
-    await _ensureScope();
+    final scope = _currentScope;
+    await _ensureScope(scope);
     final householdId = _householdId;
     if (householdId == null) return;
-    await AppServices.client.from('inventory_events').insert({
-      'household_id': householdId,
-      'inventory_item_id': id,
-      'event_type': eventType,
-      'quantity': quantity,
-      'value_vnd': valueVnd,
-      'metadata': {'name': name, ...metadata},
-      'actor_id': AppServices.client.auth.currentUser?.id,
-    });
+    await AppServices.client.rpc(
+      'record_inventory_event',
+      params: {
+        'p_household_id': householdId,
+        'p_inventory_item_id': id,
+        'p_event_type': eventType,
+        'p_quantity': quantity,
+        'p_value_vnd': valueVnd,
+        'p_metadata': metadata,
+      },
+    );
+    _assertScope(scope);
   }
 
-  Future<Map<String, String>> saveShopping(
+  Future<void> saveShopping(
     List<ShoppingSummary> items,
     Set<int> checked,
   ) async {
-    await _ensureScope();
+    final scope = _currentScope;
+    await _ensureScope(scope);
     final householdId = _householdId;
-    if (householdId == null) return const {};
-    await _loadShoppingIds();
-    final activeIds = <String>{};
-    final purchasedInventoryIds = <String, String>{};
+    if (householdId == null) return;
+    await _loadShoppingIds(scope);
     for (final entry in items.asMap().entries) {
+      _assertScope(scope);
       final item = entry.value;
       final identity = shoppingIdentity(item);
       final id = _shoppingIds.putIfAbsent(identity, newLocalId);
-      activeIds.add(id);
       final existingInventoryId = _shoppingInventoryLinks[id];
       final detail = item.$2.split('·').map((part) => part.trim()).toList();
       final amount = _parseQuantity(detail.first);
+      final fingerprint = _shoppingFingerprint(
+        item,
+        checked: checked.contains(entry.key),
+      );
+      if (_shoppingFingerprints[id] == fingerprint) {
+        if (checked.contains(entry.key) && existingInventoryId == null) {
+          final result = await AppServices.client.rpc(
+            'complete_shopping_item',
+            params: {'p_shopping_item_id': id},
+          );
+          _assertScope(scope);
+          if (result is! String || result.isEmpty) {
+            throw StateError('Máy chủ chưa xác nhận món đã mua.');
+          }
+          _shoppingInventoryLinks[id] = result;
+        }
+        continue;
+      }
       final row = <String, Object?>{
         'id': id,
         'household_id': householdId,
@@ -559,45 +615,54 @@ class HouseholdDataRepository {
         'created_by': AppServices.client.auth.currentUser?.id,
       };
       await AppServices.client.from('shopping_items').upsert(row);
+      _assertScope(scope);
       if (checked.contains(entry.key)) {
         final result = await AppServices.client.rpc(
           'complete_shopping_item',
           params: {'p_shopping_item_id': id},
         );
+        _assertScope(scope);
+        if (checked.contains(entry.key) &&
+            (result is! String || result.isEmpty)) {
+          throw StateError('Máy chủ chưa xác nhận món đã mua.');
+        }
         if (result is String && result.isNotEmpty) {
           _shoppingInventoryLinks[id] = result;
-          _foodIdsByName[item.$1] = result;
-          purchasedInventoryIds[item.$1] = result;
         }
       }
+      _shoppingFingerprints[id] = fingerprint;
     }
-    final remoteRows = await AppServices.client
+    await _saveShoppingIds(scope);
+    _assertScope(scope);
+  }
+
+  Future<void> deleteShoppingItem(ShoppingSummary item) async {
+    final scope = _currentScope;
+    await _ensureScope(scope);
+    final householdId = _householdId;
+    if (householdId == null) return;
+    final id = _shoppingIds[shoppingIdentity(item)];
+    if (id == null) return;
+    await AppServices.client
         .from('shopping_items')
-        .select('id')
+        .delete()
+        .eq('id', id)
         .eq('household_id', householdId);
-    final staleIds = remoteRows
-        .map((row) => row['id'] as String)
-        .where((id) => !activeIds.contains(id))
-        .toList();
-    if (staleIds.isNotEmpty) {
-      await AppServices.client
-          .from('shopping_items')
-          .delete()
-          .eq('household_id', householdId)
-          .inFilter('id', staleIds);
-    }
-    await _saveShoppingIds();
-    return purchasedInventoryIds;
+    _assertScope(scope);
+    _shoppingIds.remove(shoppingIdentity(item));
+    _shoppingFingerprints.remove(id);
+    _shoppingInventoryLinks.remove(id);
+    await _saveShoppingIds(scope);
   }
 
   Future<void> recordRecipeCooked(
     String recipeName,
     List<(FoodSummary, double)> uses,
   ) async {
-    await _ensureScope();
+    final scope = _currentScope;
+    await _ensureScope(scope);
     final householdId = _householdId;
     if (householdId == null) return;
-    await _loadShoppingIds();
     final items = uses
         .map(
           (use) => {
@@ -615,6 +680,7 @@ class HouseholdDataRepository {
         'p_items': items,
       },
     );
+    _assertScope(scope);
   }
 
   Future<String> importReceipt({
@@ -626,7 +692,8 @@ class HouseholdDataRepository {
     required int? totalVnd,
     required String? localImagePath,
   }) async {
-    await _ensureScope();
+    final scope = _currentScope;
+    await _ensureScope(scope);
     final householdId = _householdId;
     if (householdId == null) throw StateError('Chưa chọn gia đình.');
     var imagePath = '';
@@ -646,6 +713,7 @@ class HouseholdDataRepository {
                 contentType: extension == 'png' ? 'image/png' : 'image/jpeg',
               ),
             );
+        _assertScope(scope);
         imagePath = path;
       }
     }
@@ -678,40 +746,49 @@ class HouseholdDataRepository {
         ],
       },
     );
+    _assertScope(scope);
     if (result is! String || result.isEmpty) {
       throw StateError('Máy chủ không xác nhận đã lưu hóa đơn.');
     }
     return result;
   }
 
-  final _foodIdsByName = <String, String>{};
-  String _ensureFoodId(FoodSummary food) =>
-      _foodIdsByName.putIfAbsent(food.$1, newLocalId);
+  String _ensureFoodId(FoodSummary food) => food.id;
   String ensureFoodId(FoodSummary food) => _ensureFoodId(food);
 
-  Future<void> _loadShoppingIds() async {
+  Future<void> _loadShoppingIds([String? scope]) async {
+    final key = _shoppingIdsKeyFor(scope ?? _currentScope);
     try {
       final preferences = await SharedPreferences.getInstance();
-      final raw = preferences.getString(_shoppingIdsKey);
-      if (raw == null) return;
+      final raw = preferences.getString(key);
+      if (raw == null) {
+        _shoppingIds = {};
+        return;
+      }
       final decoded = Map<String, dynamic>.from((jsonDecode(raw) as Map));
-      _shoppingIds = decoded.map(
+      final loaded = decoded.map(
         (key, value) => MapEntry(key, value as String),
       );
+      if (scope == null || _currentScope == scope) _shoppingIds = loaded;
     } catch (_) {
-      _shoppingIds = {};
+      if (scope == null || _currentScope == scope) _shoppingIds = {};
     }
   }
 
-  Future<void> _saveShoppingIds() async {
+  Future<void> _saveShoppingIds([String? scope]) async {
+    final key = _shoppingIdsKeyFor(scope ?? _currentScope);
+    final ids = Map<String, String>.of(_shoppingIds);
     try {
       final preferences = await SharedPreferences.getInstance();
-      await preferences.setString(_shoppingIdsKey, jsonEncode(_shoppingIds));
+      await preferences.setString(key, jsonEncode(ids));
     } catch (_) {
       // Remote rows themselves remain authoritative if local ID cache is absent.
     }
   }
 }
+
+String _shoppingFingerprint(ShoppingSummary item, {required bool checked}) =>
+    jsonEncode([item.$1, item.$2, item.$3, item.$4, item.$5, checked]);
 
 String _eventType(String type) => switch (type) {
   'consumed' => 'consumed',

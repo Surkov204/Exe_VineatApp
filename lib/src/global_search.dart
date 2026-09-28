@@ -30,19 +30,25 @@ Future<void> showGlobalSearch(BuildContext context) async {
     );
     FoodSummary? original;
     for (final food in inventoryFoods) {
-      if (food.$1 == result.food!.name) {
+      if (food.id == result.food!.id) {
         original = food;
         break;
       }
     }
     if (original != null) {
       if (detailResult is FoodDetailData) {
-        updateFoodInInventory(original, (
-          detailResult.name,
-          '${detailResult.quantity} · ${detailResult.price}',
-          detailResult.status,
-          detailResult.image,
-        ));
+        updateFoodInInventory(
+          original,
+          FoodSummary.fromLegacy(
+            id: original.id,
+            name: detailResult.name,
+            detail: '${detailResult.quantity} · ${detailResult.price}',
+            status: detailResult.status,
+            imageIndex: detailResult.image,
+            imagePath: original.imagePath,
+            note: detailResult.note,
+          ),
+        );
       } else if (detailResult == FoodRemovalResult.deleted) {
         removeFoodFromInventory(original);
       } else if (detailResult == FoodRemovalResult.consumed) {
@@ -78,6 +84,8 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
           detail: food.$2,
           status: food.$3,
           image: food.$4,
+          id: food.id,
+          imagePath: food.imagePath,
         ),
       )
       .toList();
@@ -227,6 +235,7 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
                       itemBuilder: (_, index) => tab == 0
                           ? _ResultTile(
                               image: foundFoods[index].image,
+                              foodImagePath: foundFoods[index].imagePath,
                               foodName: foundFoods[index].name,
                               title: foundFoods[index].name,
                               subtitle:
@@ -315,10 +324,12 @@ class _ResultTile extends StatelessWidget {
     required this.badge,
     required this.onTap,
     this.foodName,
+    this.foodImagePath,
   });
   final int image;
   final String title, subtitle, badge;
   final String? foodName;
+  final String? foodImagePath;
   final VoidCallback onTap;
   @override
   Widget build(BuildContext context) => InkWell(
@@ -339,6 +350,7 @@ class _ResultTile extends StatelessWidget {
                 : FoodImage(
                     name: foodName!,
                     assetIndex: image,
+                    imagePath: foodImagePath,
                     width: 48,
                     height: 48,
                     fit: BoxFit.cover,

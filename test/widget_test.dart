@@ -5,7 +5,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vineat_app/src/app.dart' show VineatApp;
 import 'package:vineat_app/src/app_tutorial.dart'
-    show AnchoredTutorialCoachmark, tutorialTargetKeys;
+    show
+        AnchoredTutorialCoachmark,
+        pageTutorialPreferenceKey,
+        tutorialTargetKeys;
 import 'package:vineat_app/src/food_detail.dart' show FoodDetailScreen;
 import 'package:vineat_app/src/inventory_store.dart';
 import 'package:vineat_app/src/profile_screen.dart' show ProfileScreen;
@@ -24,6 +27,22 @@ void setTestViewport(WidgetTester tester, Size size) {
 }
 
 void main() {
+  test('tutorial completion is isolated per signed-in account', () {
+    final accountA = pageTutorialPreferenceKey(
+      userId: 'user-a',
+      pageKey: 'home',
+    );
+    final accountB = pageTutorialPreferenceKey(
+      userId: 'user-b',
+      pageKey: 'home',
+    );
+    expect(accountA, isNot(accountB));
+    expect(
+      pageTutorialPreferenceKey(userId: 'local', pageKey: 'home'),
+      'vineat_page_tutorial_local_home_v3',
+    );
+  });
+
   test('recipe catalog entries use their matching bundled photo', () {
     const expected = {
       'Mì cay trứng lòng đào': 'spicy-noodles-egg',
@@ -46,11 +65,11 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({
       'vineat_tutorial_completed_v1': true,
-      'vineat_page_tutorial_home_v2': true,
-      'vineat_page_tutorial_scan_v2': true,
-      'vineat_page_tutorial_recipes_v2': true,
-      'vineat_page_tutorial_shopping_v2': true,
-      'vineat_page_tutorial_reports_v2': true,
+      'vineat_page_tutorial_local_home_v3': true,
+      'vineat_page_tutorial_local_scan_v3': true,
+      'vineat_page_tutorial_local_recipes_v3': true,
+      'vineat_page_tutorial_local_shopping_v3': true,
+      'vineat_page_tutorial_local_reports_v3': true,
     });
     // These helpers reset in-memory fixtures synchronously. Their queued
     // SharedPreferences cleanup must not hold the next widget test open.
@@ -95,7 +114,7 @@ void main() {
     expect(find.text('Tủ lạnh của bạn'), findsOneWidget);
     expect(
       (await SharedPreferences.getInstance()).getBool(
-        'vineat_page_tutorial_home_v2',
+        'vineat_page_tutorial_local_home_v3',
       ),
       isTrue,
     );
@@ -235,12 +254,15 @@ void main() {
       'vineat.household_cache_scope.v1',
       'previous-user:previous-household',
     );
-    inventoryFoods.insert(0, (
-      'Dữ liệu riêng của gia đình cũ',
-      '1 phần · 10đ',
-      'Tươi ngon',
+    inventoryFoods.insert(
       0,
-    ));
+      FoodSummary.fromLegacy(
+        name: 'Dữ liệu riêng của gia đình cũ',
+        detail: '1 phần · 10đ',
+        status: 'Tươi ngon',
+        imageIndex: 0,
+      ),
+    );
     addTearDown(() => inventoryFoods.removeAt(0));
 
     final preview = await localDemoPreviewSnapshot();
@@ -267,6 +289,16 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Thêm vào danh sách'));
     await tester.pumpAndSettle();
+    expect(find.text('Bắp cải'), findsOneWidget);
+
+    await tester.tap(find.text('Thêm món'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'Bắp cải');
+    await tester.ensureVisible(find.text('Thêm vào danh sách'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Thêm vào danh sách'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bắp cải đã có trong danh sách'), findsOneWidget);
     expect(find.text('Bắp cải'), findsOneWidget);
 
     await tester.tap(find.text('Báo cáo'));

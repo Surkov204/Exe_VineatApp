@@ -21,17 +21,23 @@ class FoodDetailData {
     required this.addedBy,
     required this.note,
     required this.image,
+    this.id,
+    this.imagePath,
   });
 
   final String name, category, quantity, price, purchaseDate, expiryDate;
   final String status, addedBy, note;
   final int image;
+  final String? id;
+  final String? imagePath;
 
   factory FoodDetailData.fromSummary({
     required String name,
     required String detail,
     required String status,
     required int image,
+    String? id,
+    String? imagePath,
   }) {
     final parts = detail.split('·').map((e) => e.trim()).toList();
     final now = DateTime.now();
@@ -54,6 +60,8 @@ class FoodDetailData {
       addedBy: image.isEven ? 'Mẹ' : 'Bố',
       note: _noteFor(name),
       image: image,
+      id: id,
+      imagePath: imagePath,
     );
   }
 
@@ -101,6 +109,8 @@ class FoodDetailData {
       addedBy: addedBy,
       note: note ?? this.note,
       image: image,
+      id: id,
+      imagePath: imagePath,
     );
   }
 }
@@ -240,6 +250,7 @@ class _FoodDetailScreenState extends State<FoodDetailScreen> {
                     FoodImage(
                       name: food.name,
                       assetIndex: food.image,
+                      imagePath: food.imagePath,
                       fit: BoxFit.cover,
                     ),
                     const DecoratedBox(

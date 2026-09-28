@@ -29,8 +29,18 @@ class AppServices {
   static Future<void> initialize() async {
     if (initialized) return;
     initialized = true;
+    final parsedUrl = Uri.tryParse(_supabaseUrl);
+    final secureHostedUrl =
+        parsedUrl?.scheme == 'https' && parsedUrl?.host.isNotEmpty == true;
+    // Supabase's local stack is plain HTTP. Keep that escape hatch restricted
+    // to the loopback/emulator gateway and debug builds so an insecure URL can
+    // never silently become a release configuration.
+    final localDebugUrl =
+        kDebugMode &&
+        parsedUrl?.scheme == 'http' &&
+        const {'localhost', '127.0.0.1', '10.0.2.2'}.contains(parsedUrl?.host);
     configured =
-        _supabaseUrl.startsWith('https://') && _supabasePublicKey.isNotEmpty;
+        (secureHostedUrl || localDebugUrl) && _supabasePublicKey.isNotEmpty;
     if (!configured) return;
     try {
       await Supabase.initialize(
