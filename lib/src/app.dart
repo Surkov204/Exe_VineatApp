@@ -293,153 +293,158 @@ class _AppShellState extends State<AppShell>
       fit: StackFit.expand,
       children: [
         Scaffold(
-          body: Column(
-            children: [
-              ValueListenableBuilder<String?>(
-                valueListenable: HouseholdDataRepository.instance.syncStatus,
-                builder: (context, status, _) => status == null
-                    ? const SizedBox.shrink()
-                    : Material(
-                        color: status.startsWith('Đang')
-                            ? const Color(0xFFE8F2FF)
-                            : const Color(0xFFFFF4E5),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(14, 7, 4, 7),
-                          child: Row(
-                            children: [
-                              Icon(
-                                status.startsWith('Đang')
-                                    ? Icons.sync
-                                    : Icons.cloud_off_outlined,
-                                size: 18,
-                                color: status.startsWith('Đang')
-                                    ? Colors.blueGrey
-                                    : Colors.deepOrange,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  status,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 11),
+          body: SafeArea(
+            top: true,
+            bottom: false,
+            minimum: const EdgeInsets.only(top: 24),
+            child: Column(
+              children: [
+                ValueListenableBuilder<String?>(
+                  valueListenable: HouseholdDataRepository.instance.syncStatus,
+                  builder: (context, status, _) => status == null
+                      ? const SizedBox.shrink()
+                      : Material(
+                          color: status.startsWith('Đang')
+                              ? const Color(0xFFE8F2FF)
+                              : const Color(0xFFFFF4E5),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(14, 7, 4, 7),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  status.startsWith('Đang')
+                                      ? Icons.sync
+                                      : Icons.cloud_off_outlined,
+                                  size: 18,
+                                  color: status.startsWith('Đang')
+                                      ? Colors.blueGrey
+                                      : Colors.deepOrange,
                                 ),
-                              ),
-                              IconButton(
-                                tooltip: 'Ẩn thông báo',
-                                visualDensity: VisualDensity.compact,
-                                onPressed: () =>
-                                    HouseholdDataRepository
-                                            .instance
-                                            .syncStatus
-                                            .value =
-                                        null,
-                                icon: const Icon(Icons.close, size: 18),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-              ),
-              if (!AppServices.configured)
-                Material(
-                  color: const Color(0xFFEAF5FF),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 7, 14, 7),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.info_outline,
-                          size: 17,
-                          color: Color(0xFF366A91),
-                        ),
-                        const SizedBox(width: 8),
-                        const Expanded(
-                          child: Text(
-                            'Demo ngoại tuyến · dữ liệu mẫu chỉ lưu trên thiết bị, chưa đồng bộ gia đình.',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Color(0xFF345B78),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    status,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Ẩn thông báo',
+                                  visualDensity: VisualDensity.compact,
+                                  onPressed: () =>
+                                      HouseholdDataRepository
+                                              .instance
+                                              .syncStatus
+                                              .value =
+                                          null,
+                                  icon: const Icon(Icons.close, size: 18),
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                  ),
                 ),
-              Expanded(
-                child: Row(
-                  key: const ValueKey('app-body-row'),
-                  children: [
-                    if (useRail)
-                      NavigationRail(
-                        selectedIndex: _index,
-                        onDestinationSelected: _selectTab,
-                        labelType: NavigationRailLabelType.all,
-                        backgroundColor: Colors.white,
-                        indicatorColor: const Color(0xFFE7F8F1),
-                        destinations: const [
-                          NavigationRailDestination(
-                            icon: Icon(Icons.home_outlined),
-                            selectedIcon: Icon(Icons.home),
-                            label: Text('Trang chủ'),
+                if (!AppServices.configured)
+                  Material(
+                    color: const Color(0xFFEAF5FF),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 7, 14, 7),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.info_outline,
+                            size: 17,
+                            color: Color(0xFF366A91),
                           ),
-                          NavigationRailDestination(
-                            icon: Icon(Icons.document_scanner_outlined),
-                            label: Text('Scan'),
-                          ),
-                          NavigationRailDestination(
-                            icon: Icon(Icons.restaurant_menu),
-                            label: Text('Món ăn'),
-                          ),
-                          NavigationRailDestination(
-                            icon: Icon(Icons.shopping_basket_outlined),
-                            label: Text('Đi chợ'),
-                          ),
-                          NavigationRailDestination(
-                            icon: Icon(Icons.bar_chart_rounded),
-                            label: Text('Báo cáo'),
+                          const SizedBox(width: 8),
+                          const Expanded(
+                            child: Text(
+                              'Demo ngoại tuyến · dữ liệu mẫu chỉ lưu trên thiết bị, chưa đồng bộ gia đình.',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF345B78),
+                              ),
+                            ),
                           ),
                         ],
                       ),
-                    Expanded(
-                      child: AnimatedBuilder(
-                        animation: _tabTransition,
-                        child: SizedBox.expand(
-                          child: IndexedStack(
-                            index: _index,
-                            children: [
-                              for (var i = 0; i < _pages.length; i++)
-                                TickerMode(
-                                  enabled: i == _index,
-                                  child: _pages[i],
-                                ),
-                            ],
-                          ),
-                        ),
-                        builder: (context, child) {
-                          final progress = Curves.easeOutCubic.transform(
-                            _tabTransition.value,
-                          );
-                          return Opacity(
-                            opacity: .88 + (.12 * progress),
-                            child: Transform.translate(
-                              offset: Offset(
-                                _transitionDirection * 10 * (1 - progress),
-                                0,
-                              ),
-                              child: child,
-                            ),
-                          );
-                        },
-                      ),
                     ),
-                  ],
+                  ),
+                Expanded(
+                  child: Row(
+                    key: const ValueKey('app-body-row'),
+                    children: [
+                      if (useRail)
+                        NavigationRail(
+                          selectedIndex: _index,
+                          onDestinationSelected: _selectTab,
+                          labelType: NavigationRailLabelType.all,
+                          backgroundColor: Colors.white,
+                          indicatorColor: const Color(0xFFE7F8F1),
+                          destinations: const [
+                            NavigationRailDestination(
+                              icon: Icon(Icons.home_outlined),
+                              selectedIcon: Icon(Icons.home),
+                              label: Text('Trang chủ'),
+                            ),
+                            NavigationRailDestination(
+                              icon: Icon(Icons.document_scanner_outlined),
+                              label: Text('Scan'),
+                            ),
+                            NavigationRailDestination(
+                              icon: Icon(Icons.restaurant_menu),
+                              label: Text('Món ăn'),
+                            ),
+                            NavigationRailDestination(
+                              icon: Icon(Icons.shopping_basket_outlined),
+                              label: Text('Đi chợ'),
+                            ),
+                            NavigationRailDestination(
+                              icon: Icon(Icons.bar_chart_rounded),
+                              label: Text('Báo cáo'),
+                            ),
+                          ],
+                        ),
+                      Expanded(
+                        child: AnimatedBuilder(
+                          animation: _tabTransition,
+                          child: SizedBox.expand(
+                            child: IndexedStack(
+                              index: _index,
+                              children: [
+                                for (var i = 0; i < _pages.length; i++)
+                                  TickerMode(
+                                    enabled: i == _index,
+                                    child: _pages[i],
+                                  ),
+                              ],
+                            ),
+                          ),
+                          builder: (context, child) {
+                            final progress = Curves.easeOutCubic.transform(
+                              _tabTransition.value,
+                            );
+                            return Opacity(
+                              opacity: .88 + (.12 * progress),
+                              child: Transform.translate(
+                                offset: Offset(
+                                  _transitionDirection * 10 * (1 - progress),
+                                  0,
+                                ),
+                                child: child,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           bottomNavigationBar: useRail
               ? null

@@ -27,7 +27,9 @@ void setTestViewport(WidgetTester tester, Size size) {
   addTearDown(() {
     tester.view
       ..resetPhysicalSize()
-      ..resetDevicePixelRatio();
+      ..resetDevicePixelRatio()
+      ..resetPadding()
+      ..resetViewPadding();
   });
 }
 
@@ -118,6 +120,50 @@ void main() {
     expect(restored.note, 'Chín vàng');
     expect(restored.priority, 'Cần mua gấp');
     expect(restored.createdBy, 'Mẹ');
+  });
+
+  test('remote household snapshots do not reuse prior purchase links', () {
+    final previousItem = ShoppingSummary(
+      id: 'shopping-a',
+      householdId: 'household-a',
+      name: 'Cà rốt',
+      quantity: 2,
+      unit: 'củ',
+      category: 'Rau củ',
+    );
+    final currentItem = ShoppingSummary(
+      id: 'shopping-b',
+      householdId: 'household-b',
+      name: 'Cà rốt',
+      quantity: 2,
+      unit: 'củ',
+      category: 'Rau củ',
+    );
+    shoppingInventoryLinks[shoppingIdentity(
+      previousItem,
+    )] = ShoppingInventoryLink(
+      food: FoodSummary(
+        id: 'food-a',
+        householdId: 'household-a',
+        name: 'Cà rốt',
+        quantity: 2,
+        unit: 'củ',
+        priceVnd: 0,
+        imageIndex: 0,
+      ),
+      createdByPurchase: true,
+    );
+
+    replaceInventoryFromRemote(records: const [], events: const []);
+    replaceShoppingFromRemote(items: [currentItem], checked: const {});
+    setShoppingPurchased(currentItem, true);
+
+    expect(shoppingInventoryLinks, hasLength(1));
+    expect(
+      shoppingInventoryLinks[shoppingIdentity(currentItem)]!.food.householdId,
+      'household-b',
+    );
+    expect(inventoryFoods, hasLength(1));
   });
 
   test('legacy shopping checkbox index restores as a stable item ID', () async {
@@ -258,6 +304,23 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('offline banner stays below the Android status bar', (
+    tester,
+  ) async {
+    setTestViewport(tester, const Size(360, 640));
+    tester.view
+      ..viewPadding = const FakeViewPadding(top: 24, bottom: 24)
+      // Edge-to-edge Android can report viewPadding while padding is zero.
+      ..padding = const FakeViewPadding();
+
+    await tester.pumpWidget(const VineatApp());
+    await tester.pumpAndSettle();
+
+    final banner = find.textContaining('Demo ngoại tuyến');
+    expect(tester.getTopLeft(banner).dy, greaterThanOrEqualTo(24));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('renders the five-screen ViNeat shell', (tester) async {
     await tester.pumpWidget(const VineatApp());
     await tester.pumpAndSettle();
@@ -373,20 +436,23 @@ void main() {
     expect(priorityChip.hitTestable(), findsOneWidget);
     await tester.tap(priorityChip);
     await tester.pumpAndSettle();
-    await tester.drag(find.byType(ListView).first, const Offset(0, -420));
+    final fridgeList = find.descendant(
+      of: find.byType(FridgeScreen),
+      matching: find.byType(ListView),
+    );
+    await tester.drag(fridgeList, const Offset(0, -420));
     await tester.pumpAndSettle();
     expect(find.text('Món cần ưu tiên'), findsOneWidget);
     expect(find.text('Cà chua'), findsNothing);
     expect(find.text('Cá basa fillet'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
+    await tester.drag(fridgeList, const Offset(0, -100));
+    await tester.pumpAndSettle();
+    expect(find.text('Bỏ lọc').hitTestable(), findsOneWidget);
     await tester.tap(find.text('Bỏ lọc'));
     await tester.pumpAndSettle();
     expect(find.text('Thực phẩm trong tủ'), findsOneWidget);
-    final fridgeList = find.descendant(
-      of: find.byType(FridgeScreen),
-      matching: find.byType(ListView),
-    );
     await tester.drag(fridgeList, const Offset(0, -300));
     await tester.pumpAndSettle();
     expect(find.text('Cà chua'), findsOneWidget);
@@ -513,9 +579,18 @@ void main() {
     await tester.tap(find.text('Scan'));
     await tester.pumpAndSettle();
     expect(find.text('Không phải hóa đơn thật'), findsOneWidget);
+    expect(find.text('Chưa chọn ảnh hóa đơn'), findsOneWidget);
+    expect(find.text('Đặt hóa đơn trong khung'), findsNothing);
     expect(find.text('Quét gần đây'), findsNothing);
     expect(find.text('Winmart'), findsNothing);
     expect(tester.takeException(), isNull);
+
+    await tester.dragFrom(const Offset(160, 270), const Offset(0, -300));
+    await tester.pumpAndSettle();
+    expect(find.text('Chọn ảnh'), findsOneWidget);
+    expect(find.text('Chụp ảnh'), findsOneWidget);
+    await tester.dragFrom(const Offset(160, 270), const Offset(0, 300));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('Dữ liệu mẫu').first);
     await tester.pumpAndSettle();

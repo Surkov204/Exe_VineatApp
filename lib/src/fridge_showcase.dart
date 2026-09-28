@@ -131,7 +131,12 @@ class _FridgeViewerState extends State<_FridgeViewer>
   bool _appResumed = true;
 
   bool get _supportsModelViewerPlatform =>
-      kIsWeb || Platform.isAndroid || Platform.isIOS;
+      kIsWeb ||
+      Platform.isIOS ||
+      // Android debug emulators often expose an incomplete WebGL surface.
+      // Keep local demos responsive with the lightweight Flutter model; the
+      // interactive GLB remains enabled for profile and release builds.
+      (Platform.isAndroid && !kDebugMode);
   bool get _canRender3d =>
       widget.active &&
       _appResumed &&

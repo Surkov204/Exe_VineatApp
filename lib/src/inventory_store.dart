@@ -500,6 +500,10 @@ void replaceShoppingFromRemote({
   required List<ShoppingSummary> items,
   required Set<String> checked,
 }) {
+  // Purchase links are local demo conveniences. A fresh server snapshot may
+  // belong to a different account or household, so never carry those links
+  // across the remote boundary; the repository keeps authoritative remote IDs.
+  shoppingInventoryLinks.clear();
   shoppingItems
     ..clear()
     ..addAll(items);

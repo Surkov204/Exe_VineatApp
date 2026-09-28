@@ -26,6 +26,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Keep local previews side-by-side with any previously installed
+            // ViNeat build instead of requiring an uninstall and data loss.
+            applicationIdSuffix = ".preview"
+        }
         release {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
