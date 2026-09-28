@@ -31,6 +31,12 @@ android {
             // ViNeat build instead of requiring an uninstall and data loss.
             applicationIdSuffix = ".preview"
         }
+        getByName("profile") {
+            // Keep AOT/profile measurements separate from both the preview
+            // runner and any older release install on the same emulator.
+            applicationIdSuffix = ".profile"
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.

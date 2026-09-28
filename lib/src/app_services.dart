@@ -7,11 +7,19 @@ const _supabasePublicKey = String.fromEnvironment(
   'SUPABASE_PUBLISHABLE_KEY',
   defaultValue: String.fromEnvironment('SUPABASE_ANON_KEY'),
 );
+const debugOAuthRedirect =
+    'com.vineat.team.vineat_app.preview://login-callback';
+const profileOAuthRedirect =
+    'com.vineat.team.vineat_app.profile://login-callback';
+const releaseOAuthRedirect = 'com.vineat.team.vineat_app://login-callback';
+
 const appOAuthRedirect = String.fromEnvironment(
   'VINEAT_OAUTH_REDIRECT',
   defaultValue: kDebugMode
-      ? 'com.vineat.team.vineat_app.preview://login-callback'
-      : 'com.vineat.team.vineat_app://login-callback',
+      ? debugOAuthRedirect
+      : kProfileMode
+      ? profileOAuthRedirect
+      : releaseOAuthRedirect,
 );
 
 class AppServices {

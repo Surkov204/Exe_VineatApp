@@ -4,6 +4,7 @@ site_url = "http://localhost:3000"
 additional_redirect_urls = [
   "com.vineat.team.vineat_app://login-callback",
   "com.vineat.team.vineat_app.preview://login-callback",
+  "com.vineat.team.vineat_app.profile://login-callback",
 ]
 enable_signup = true
 

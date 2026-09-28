@@ -4,7 +4,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:vineat_app/src/app_services.dart' show appOAuthRedirect;
+import 'package:vineat_app/src/app_services.dart'
+    show appOAuthRedirect, profileOAuthRedirect, releaseOAuthRedirect;
 import 'package:vineat_app/src/app.dart' show VineatApp;
 import 'package:vineat_app/src/auth_screens.dart' show LoginScreen;
 import 'package:vineat_app/src/app_tutorial.dart'
@@ -41,6 +42,21 @@ void main() {
       'com.vineat.team.vineat_app.preview://login-callback',
     );
   });
+
+  test(
+    'profile build has its own callback and does not collide with release',
+    () {
+      expect(
+        profileOAuthRedirect,
+        'com.vineat.team.vineat_app.profile://login-callback',
+      );
+      expect({
+        appOAuthRedirect,
+        profileOAuthRedirect,
+        releaseOAuthRedirect,
+      }, hasLength(3));
+    },
+  );
 
   test('tutorial completion is isolated per signed-in account', () {
     final accountA = pageTutorialPreferenceKey(
