@@ -32,6 +32,7 @@ final inventoryFoods = <FoodSummary>[
 ];
 
 final inventoryRevision = ValueNotifier<int>(0);
+final customFoodImagePaths = <String, String>{};
 
 Future<void> _inventoryWriteQueue = Future<void>.value();
 Future<void> _shoppingWriteQueue = Future<void>.value();
@@ -50,6 +51,7 @@ Future<void> restoreInventory() async {
     if (inventoryRevision.value != revisionAtStart) return;
 
     final restored = <FoodSummary>[];
+    final restoredImagePaths = <String, String>{};
     for (final value in decoded) {
       if (value is! Map) continue;
       final name = value['name'];
@@ -61,11 +63,18 @@ Future<void> restoreInventory() async {
           status is String &&
           image is num) {
         restored.add((name, detail, status, image.toInt()));
+        final imagePath = value['imagePath'];
+        if (imagePath is String && imagePath.isNotEmpty) {
+          restoredImagePaths[name] = imagePath;
+        }
       }
     }
     inventoryFoods
       ..clear()
       ..addAll(restored);
+    customFoodImagePaths
+      ..clear()
+      ..addAll(restoredImagePaths);
     inventoryRevision.value++;
   } catch (_) {
     // A corrupt demo cache must never prevent the app from opening.
@@ -82,6 +91,7 @@ Future<void> _persistInventory() {
             'detail': food.$2,
             'status': food.$3,
             'image': food.$4,
+            'imagePath': customFoodImagePaths[food.$1],
           },
         )
         .toList(),
@@ -108,6 +118,7 @@ void addFoodsToInventory(Iterable<FoodSummary> foods) {
 
 void removeFoodFromInventory(FoodSummary food) {
   inventoryFoods.remove(food);
+  customFoodImagePaths.remove(food.$1);
   inventoryRevision.value++;
   unawaited(_persistInventory());
 }
@@ -116,11 +127,16 @@ void updateFoodInInventory(FoodSummary before, FoodSummary after) {
   final index = inventoryFoods.indexOf(before);
   if (index < 0) return;
   inventoryFoods[index] = after;
+  if (before.$1 != after.$1) {
+    final imagePath = customFoodImagePaths.remove(before.$1);
+    if (imagePath != null) customFoodImagePaths[after.$1] = imagePath;
+  }
   inventoryRevision.value++;
   unawaited(_persistInventory());
 }
 
 Future<void> resetDemoInventory() async {
+  customFoodImagePaths.clear();
   inventoryFoods
     ..clear()
     ..addAll(const [
@@ -167,7 +183,13 @@ Future<ShoppingSnapshot?> restoreShopping() async {
     if (rawItems is List) {
       for (final value in rawItems) {
         if (value is! Map) continue;
-        final fields = [value['name'], value['detail'], value['priority'], value['by'], value['category']];
+        final fields = [
+          value['name'],
+          value['detail'],
+          value['priority'],
+          value['by'],
+          value['category'],
+        ];
         if (fields.every((field) => field is String)) {
           items.add((
             fields[0] as String,
@@ -190,10 +212,7 @@ Future<ShoppingSnapshot?> restoreShopping() async {
   }
 }
 
-Future<void> persistShopping(
-  List<ShoppingSummary> items,
-  Set<int> checked,
-) {
+Future<void> persistShopping(List<ShoppingSummary> items, Set<int> checked) {
   final encoded = jsonEncode({
     'items': items
         .map(

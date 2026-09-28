@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'food_detail.dart';
+import 'food_image.dart';
 import 'inventory_store.dart';
 import 'recipe_detail.dart';
 
@@ -36,15 +37,12 @@ Future<void> showGlobalSearch(BuildContext context) async {
     }
     if (original != null) {
       if (detailResult is FoodDetailData) {
-        updateFoodInInventory(
-          original,
-          (
-            detailResult.name,
-            '${detailResult.quantity} · ${detailResult.price}',
-            detailResult.status,
-            detailResult.image,
-          ),
-        );
+        updateFoodInInventory(original, (
+          detailResult.name,
+          '${detailResult.quantity} · ${detailResult.price}',
+          detailResult.status,
+          detailResult.image,
+        ));
       } else if (detailResult == true) {
         removeFoodFromInventory(original);
       }
@@ -225,6 +223,7 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
                       itemBuilder: (_, index) => tab == 0
                           ? _ResultTile(
                               image: foundFoods[index].image,
+                              foodName: foundFoods[index].name,
                               title: foundFoods[index].name,
                               subtitle:
                                   '${foundFoods[index].quantity} · ${foundFoods[index].price} · ${foundFoods[index].category}',
@@ -311,9 +310,11 @@ class _ResultTile extends StatelessWidget {
     required this.subtitle,
     required this.badge,
     required this.onTap,
+    this.foodName,
   });
   final int image;
   final String title, subtitle, badge;
+  final String? foodName;
   final VoidCallback onTap;
   @override
   Widget build(BuildContext context) => InkWell(
@@ -324,12 +325,20 @@ class _ResultTile extends StatelessWidget {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(9),
-            child: Image.asset(
-              '$_assets${image == 0 ? 'search-image' : 'search-image($image)'}',
-              width: 48,
-              height: 48,
-              fit: BoxFit.cover,
-            ),
+            child: foodName == null
+                ? Image.asset(
+                    '$_assets${image == 0 ? 'search-image' : 'search-image($image)'}',
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.cover,
+                  )
+                : FoodImage(
+                    name: foodName!,
+                    assetIndex: image,
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.cover,
+                  ),
           ),
           const SizedBox(width: 11),
           Expanded(
