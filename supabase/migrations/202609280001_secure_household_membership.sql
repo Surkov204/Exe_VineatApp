@@ -34,6 +34,10 @@ create policy "owners update households" on public.households
   for update using (public.is_household_owner(id))
   with check (public.is_household_owner(id));
 
+-- The hosted realtime foundation used this signature with a different
+-- composite return type. PostgreSQL cannot replace a function's return type.
+drop function if exists public.create_household(text);
+
 create or replace function public.create_household(p_name text)
 returns table(out_id uuid, out_name text, out_invite_code text)
 language plpgsql
