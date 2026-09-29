@@ -41,6 +41,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String role = 'Chủ tủ';
   int diet = 0;
   final notifications = <bool>[true, true, true, true];
+  bool _signOutBusy = false;
 
   Future<void> _editProfile() async {
     final nameController = TextEditingController(text: name);
@@ -324,15 +325,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (AppServices.configured) ...[
           const SizedBox(height: 10),
           OutlinedButton.icon(
-            onPressed: () async {
-              try {
-                await AppServices.client.auth.signOut();
-              } catch (_) {
-                if (mounted) _message('Chưa đăng xuất được. Vui lòng thử lại.');
-              }
-            },
-            icon: const Icon(Icons.logout),
-            label: const Text('Đăng xuất'),
+            onPressed: _signOutBusy
+                ? null
+                : () async {
+                    setState(() => _signOutBusy = true);
+                    try {
+                      await AppServices.client.auth.signOut();
+                      if (mounted) {
+                        Navigator.of(
+                          this.context,
+                        ).popUntil((route) => route.isFirst);
+                      }
+                    } catch (_) {
+                      if (mounted) {
+                        _message('Chưa đăng xuất được. Vui lòng thử lại.');
+                      }
+                    } finally {
+                      if (mounted) setState(() => _signOutBusy = false);
+                    }
+                  },
+            icon: _signOutBusy
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.logout),
+            label: Text(_signOutBusy ? 'Đang đăng xuất…' : 'Đăng xuất'),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14),
               foregroundColor: Colors.redAccent,

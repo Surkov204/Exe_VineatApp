@@ -26,7 +26,9 @@ local, ký debug; không dùng để phát hành cửa hàng.
 
 ## Chạy với Supabase
 
-1. Cấu hình email OTP và Google trong Supabase Auth. Thêm các redirect URI vào
+1. Trong Supabase Auth → Email Templates → Magic Link, cấu hình nội dung thư có
+   `{{ .Token }}` vì màn hình ViNeat yêu cầu OTP 6 số (không dùng magic link mặc
+   định). Bật email signup/OTP và Google provider. Thêm các redirect URI vào
    danh sách Redirect URLs: `com.vineat.team.vineat_app://login-callback` cho
    Release, `com.vineat.team.vineat_app.preview://login-callback` cho Debug và
    `com.vineat.team.vineat_app.profile://login-callback` cho Profile.
@@ -82,6 +84,11 @@ OTP của Supabase local xem trong Mailpit tại `http://localhost:54324`. Local
 Google OAuth chưa có client credentials nên cần project cloud để demo Google.
 Không đưa `SECRET_KEY`, `service_role` hoặc Google client secret vào app; không
 chia sẻ log `supabase status` vì trong đó có khóa local đặc quyền.
+
+Supabase local dùng template tiếng Việt tại `supabase/templates/magic_link.html`
+để gửi OTP 6 số khớp với màn hình đăng nhập. Hosted project cũng phải cấu hình
+Magic Link template tương đương trong dashboard; nếu giữ template mặc định chỉ
+gửi magic link thì màn hình nhập mã sẽ không thể đăng nhập.
 
 `npx supabase db reset --local` sẽ xóa dữ liệu database local rồi áp lại toàn bộ
 migration; chỉ dùng nếu có thể bỏ dữ liệu demo đang lưu. Không thêm `--linked`.

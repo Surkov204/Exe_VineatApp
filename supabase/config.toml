@@ -14,5 +14,9 @@ enable_confirmations = false
 otp_length = 6
 otp_expiry = 3600
 
+[auth.email.template.magic_link]
+subject = "Mã đăng nhập ViNeat"
+content_path = "./supabase/templates/magic_link.html"
+
 [functions.household]
 verify_jwt = true
