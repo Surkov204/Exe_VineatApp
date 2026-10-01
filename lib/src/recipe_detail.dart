@@ -1,30 +1,79 @@
 import 'package:flutter/material.dart';
 
-import 'app_services.dart';
+import 'diet_preferences.dart';
 import 'global_search.dart';
-import 'household_data_repository.dart';
 import 'inventory_store.dart';
 import 'profile_screen.dart';
-import 'recipe_cook_dialog.dart';
+import 'usage_screen.dart';
+import 'meal_plan.dart';
+import 'menu_shopping_sheet.dart';
+import 'food_notification.dart';
+import 'recipe_nutrition.dart';
+import 'cooking_guide.dart';
 
 const _green = Color(0xFF079669);
 const _ink = Color(0xFF253043);
-const _muted = Color(0xFF98A2B3);
+const _muted = Color(0xFF667085);
 const _assetRoot = 'design_reference/home/page_files/';
+const _recipePhotos = <String, String>{
+  'mì cay trứng lòng đào': 'spicy-noodles-egg',
+  'canh rau muống nấu tôm': 'water-spinach-shrimp-soup',
+  'bò xào cải thảo': 'beef-cabbage-stir-fry',
+  'bánh mì ốp la trứng gà': 'banh-mi-egg',
+  'cá basa kho tiêu': 'caramel-braised-basa',
+  'salad cá thu dầu mè': 'mackerel-sesame-salad',
+  'đậu hũ sốt cà chua': 'tofu-tomato-sauce',
+  'phở bò tái': 'pho-bo-tai',
+};
+
+bool hasBundledRecipePhoto(String name) =>
+    _recipePhotos.keys.any((known) => name.toLowerCase().contains(known));
+
+class RecipeVisual extends StatelessWidget {
+  const RecipeVisual({
+    super.key,
+    required this.name,
+    required this.imageIndex,
+    this.height,
+    this.width,
+  });
+
+  final String name;
+  final int imageIndex;
+  final double? height;
+  final double? width;
+
+  @override
+  Widget build(BuildContext context) => hasBundledRecipePhoto(name)
+      ? Image.asset(
+          recipeImageAssetFor(name, imageIndex),
+          height: height,
+          width: width,
+          fit: BoxFit.cover,
+          cacheWidth: 1200,
+        )
+      : Container(
+          height: height,
+          width: width,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFFE5F8EC), Color(0xFFBADFC9)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: const Icon(
+            Icons.restaurant_menu,
+            size: 60,
+            color: Color(0xFF1C8E64),
+          ),
+        );
+}
 
 String recipeImageAssetFor(String name, int fallbackIndex) {
   final normalized = name.toLowerCase();
-  const images = {
-    'mì cay trứng lòng đào': 'spicy-noodles-egg',
-    'canh rau muống nấu tôm': 'water-spinach-shrimp-soup',
-    'bò xào cải thảo': 'beef-cabbage-stir-fry',
-    'bánh mì ốp la trứng gà': 'banh-mi-egg',
-    'cá basa kho tiêu': 'caramel-braised-basa',
-    'salad cá thu dầu mè': 'mackerel-sesame-salad',
-    'đậu hũ sốt cà chua': 'tofu-tomato-sauce',
-    'phở bò tái': 'pho-bo-tai',
-  };
-  for (final entry in images.entries) {
+  for (final entry in _recipePhotos.entries) {
     if (normalized.contains(entry.key)) {
       return 'assets/recipes/${entry.value}.webp';
     }
@@ -73,6 +122,8 @@ class RecipeCatalogItem {
     required this.imageIndex,
     required this.ingredients,
     this.categories = const {},
+    this.diets = const {},
+    this.vegetableCentric = false,
   });
 
   final String id;
@@ -82,6 +133,10 @@ class RecipeCatalogItem {
   final int imageIndex;
   final List<String> ingredients;
   final Set<RecipeCategory> categories;
+
+  /// Explicit recipe tags avoid guessing dietary safety from a dish name.
+  final Set<DietKind> diets;
+  final bool vegetableCentric;
 
   String get timeLabel => '$durationMinutes phút';
   String get difficultyLabel => difficulty.label;
@@ -112,13 +167,18 @@ class RecipeDetailData {
     required this.ingredients,
     required this.steps,
     required this.tags,
+    this.nutrition,
+    this.seasonings = const [],
   });
 
   final String name, meal, time, level, match, description;
-  final int image, servings, calories, protein, carbs, fat;
+  final int image, servings;
+  final int? calories, protein, carbs, fat;
   final List<RecipeIngredient> ingredients;
   final List<RecipeStep> steps;
   final List<String> tags;
+  final RecipeNutrition? nutrition;
+  final List<String> seasonings;
 
   factory RecipeDetailData.fromSummary({
     required String name,
@@ -139,24 +199,14 @@ class RecipeDetailData {
     final isSalad = cleanName.contains('Salad');
     final isTofu = cleanName.contains('Đậu hũ');
     final isPho = cleanName.contains('Phở');
+    final plainPreparation =
+        cleanName.toLowerCase().contains('yến mạch') ||
+        cleanName.toLowerCase().contains('hấp');
     final servings = isPho
         ? 4
         : isBeef
         ? 3
         : 2;
-    final calories = isPho
-        ? 450
-        : isBeef
-        ? 320
-        : isSalad
-        ? 240
-        : isSoup
-        ? 180
-        : isFish
-        ? 410
-        : isTofu
-        ? 280
-        : 380;
     FoodSummary? findFood(String ingredient) {
       final normalized = ingredient.trim().toLowerCase();
       for (final food in inventoryFoods) {
@@ -170,16 +220,27 @@ class RecipeDetailData {
       return null;
     }
 
-    final ingredientNames = [...names, 'Tỏi', 'Dầu ăn', 'Gia vị'];
+    final ingredientNames = <String>{
+      ...names,
+      if (!plainPreparation) ...[
+        if (!isSalad &&
+            !isSoup &&
+            !isPho &&
+            !isBreakfast &&
+            !cleanName.contains('Cơm gạo lứt'))
+          'Tỏi',
+        if (!isSoup && !isPho && !cleanName.contains('Mì cay')) 'Dầu ăn',
+        if (isTofu) 'Muối, tiêu' else 'Gia vị',
+      ],
+    }.toList();
+    final nutrition = estimateRecipeNutrition(ingredientNames);
     final ingredientList = <RecipeIngredient>[
       for (var i = 0; i < ingredientNames.length; i++)
         RecipeIngredient(
           ingredientNames[i],
-          i == 0
-              ? (isBeef ? '300g' : '2 phần')
-              : i == 1
-              ? '1 phần'
-              : '1 nhánh',
+          nutritionPortions[ingredientNames[i]] == null
+              ? 'Tùy khẩu vị'
+              : '${(nutritionPortions[ingredientNames[i]]!.grams * servings).toStringAsFixed(1).replaceFirst(RegExp(r'\.?0+$'), '')} g',
           findFood(ingredientNames[i]) != null,
           inventoryFood: findFood(ingredientNames[i]),
         ),
@@ -190,17 +251,7 @@ class RecipeDetailData {
     final actualMatch = ingredientList.isEmpty
         ? 0
         : (availableCount * 100 / ingredientList.length).round();
-    final action = isSoup
-        ? 'nấu canh'
-        : isSalad
-        ? 'trộn salad'
-        : isFish
-        ? 'kho cá'
-        : isTofu
-        ? 'làm sốt'
-        : isPho
-        ? 'nấu nước dùng'
-        : 'chế biến';
+    final guide = cookingGuide(cleanName, servings, ingredientNames);
     return RecipeDetailData(
       name: cleanName,
       meal: isBreakfast
@@ -213,46 +264,17 @@ class RecipeDetailData {
       match: '$actualMatch% có sẵn',
       image: image,
       servings: servings,
-      calories: calories,
-      protein: isBeef
-          ? 32
-          : isFish
-          ? 28
-          : 16,
-      carbs: isPho
-          ? 48
-          : isBreakfast
-          ? 30
-          : 12,
-      fat: isBeef
-          ? 18
-          : isFish
-          ? 22
-          : 14,
+      calories: nutrition.values[0]?.round(),
+      protein: nutrition.values[1]?.round(),
+      carbs: nutrition.values[2]?.round(),
+      fat: nutrition.values[3]?.round(),
+      nutrition: nutrition,
       description: _descriptionFor(cleanName),
       ingredients: ingredientList,
-      steps: [
-        RecipeStep(
-          'Sơ chế ${names.take(2).join(' và ')}. Rửa sạch, để ráo rồi cắt thành miếng vừa ăn.',
-          5,
-        ),
-        RecipeStep(
-          'Ướp nguyên liệu chính với gia vị, tỏi băm và một chút dầu ăn.',
-          5,
-          tip: 'Ướp đủ thời gian giúp món ăn thấm vị và thơm hơn.',
-        ),
-        RecipeStep(
-          'Bắc bếp ở lửa vừa, cho nguyên liệu vào $action. Đảo nhẹ để chín đều.',
-          8,
-          tip: isBeef
-              ? 'Dùng lửa lớn để thịt bò mềm, không ra nước.'
-              : 'Nêm từng chút để dễ điều chỉnh khẩu vị.',
-        ),
-        RecipeStep(
-          'Nêm nếm lại vừa ăn, tắt bếp và trình bày món ra đĩa. Dùng khi còn nóng.',
-          2,
-        ),
-      ],
+      steps: guide.steps
+          .map((step) => RecipeStep(step.text, step.minutes))
+          .toList(),
+      seasonings: guide.seasonings,
       tags: [
         isBreakfast ? 'bữa sáng' : 'bữa tối',
         isBeef ? 'thịt bò' : 'cơm nhà',
@@ -311,83 +333,21 @@ class RecipeDetailScreen extends StatelessWidget {
   final RecipeDetailData recipe;
 
   Future<void> _recordCooked(BuildContext context) async {
-    final uses = await showDialog<List<InventoryUsage>>(
-      context: context,
-      builder: (_) => RecipeCookDialog(
-        ingredients: recipe.ingredients
-            .where((ingredient) => ingredient.inventoryFood != null)
-            .map((ingredient) => ingredient.inventoryFood!)
-            .toList(),
+    final saved = await showInventoryUsageSheet(
+      context,
+      dish: PlannedDish(
+        date: menuDay(DateTime.now()),
+        slot: 'dinner',
+        name: recipe.name,
+        ingredients: recipe.ingredients.map((i) => i.name).toList(),
       ),
+      people: recipe.servings,
     );
-    if (uses == null || !context.mounted) return;
-    if (AppServices.configured) {
-      try {
-        HouseholdDataRepository.instance.syncStatus.value =
-            'Đang ghi nhận món đã nấu…';
-        await HouseholdDataRepository.instance.recordRecipeCooked(
-          recipe.name,
-          uses,
-        );
-        final snapshot = await HouseholdDataRepository.instance
-            .loadActiveHousehold();
-        replaceInventoryFromRemote(
-          records: snapshot.inventory,
-          events: snapshot.events,
-        );
-        HouseholdDataRepository.instance.syncStatus.value = null;
-      } catch (_) {
-        HouseholdDataRepository.instance.syncStatus.value =
-            'Chưa ghi nhận được món đã nấu. Tủ lạnh chưa thay đổi; hãy thử lại.';
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Chưa thể cập nhật bữa nấu. Vui lòng thử lại.'),
-            ),
-          );
-        }
-        return;
-      }
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Đã ghi nhận bữa nấu và cập nhật ${uses.length} nguyên liệu',
-            ),
-          ),
-        );
-      }
-      return;
-    }
-    for (final use in uses) {
-      final current = inventoryFoods.where((food) => food.id == use.food.id);
-      if (current.isEmpty ||
-          use.quantity >
-              InventoryItemRecord.fromSummary(current.first).quantity) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Số lượng trong tủ vừa thay đổi. Mở lại món và thử lần nữa nhé.',
-            ),
-          ),
-        );
-        return;
-      }
-    }
-    for (final use in uses) {
-      final current = inventoryFoods.firstWhere(
-        (food) => food.id == use.food.id,
-      );
-      if (!consumeFoodAmount(current, use.quantity)) return;
-    }
-    recordRecipeCooked(recipe.name);
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Đã ghi nhận bữa nấu và cập nhật ${uses.length} nguyên liệu',
-          ),
-        ),
+    if (saved == true && context.mounted) {
+      showFoodNotification(
+        context,
+        title: 'Đã ghi nhận món đã nấu',
+        message: 'Lượng nguyên liệu đã dùng được cập nhật trong tủ.',
       );
     }
   }
@@ -396,6 +356,7 @@ class RecipeDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: const Color(0xFFFAFAFB),
     appBar: AppBar(
+      toolbarHeight: MediaQuery.textScalerOf(context).scale(1) > 1.3 ? 96 : 64,
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.white,
       leading: IconButton(
@@ -418,7 +379,7 @@ class RecipeDetailScreen extends StatelessWidget {
           ),
           Text(
             '${recipe.meal} · ${recipe.level}',
-            style: const TextStyle(fontSize: 11, color: _muted),
+            style: const TextStyle(fontSize: 14, color: _muted),
           ),
         ],
       ),
@@ -466,7 +427,7 @@ class RecipeDetailScreen extends StatelessWidget {
                           label: Text(
                             '#$e',
                             style: const TextStyle(
-                              fontSize: 11,
+                              fontSize: 14,
                               color: Color(0xFF667085),
                             ),
                           ),
@@ -492,7 +453,7 @@ class RecipeDetailScreen extends StatelessWidget {
                       ),
                       const Text(
                         'Chọn lượng đã dùng để cập nhật tủ lạnh chính xác.',
-                        style: TextStyle(fontSize: 11, color: _muted),
+                        style: TextStyle(fontSize: 14, color: _muted),
                       ),
                       const SizedBox(height: 12),
                       Row(
@@ -504,6 +465,7 @@ class RecipeDetailScreen extends StatelessWidget {
                                     const SnackBar(
                                       content: Text(
                                         'Tính năng chia sẻ sẽ được bổ sung sau.',
+                                        textAlign: TextAlign.center,
                                       ),
                                     ),
                                   ),
@@ -539,15 +501,11 @@ class _Hero extends StatelessWidget {
   final RecipeDetailData recipe;
   @override
   Widget build(BuildContext context) => SizedBox(
-    height: 210,
+    height: MediaQuery.textScalerOf(context).scale(1) > 1.3 ? 300 : 240,
     child: Stack(
       fit: StackFit.expand,
       children: [
-        Image.asset(
-          recipeImageAssetFor(recipe.name, recipe.image),
-          fit: BoxFit.cover,
-          cacheWidth: 1200,
-        ),
+        RecipeVisual(name: recipe.name, imageIndex: recipe.image),
         const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -587,7 +545,7 @@ class _Hero extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 12,
+                  fontSize: 16,
                   height: 1.4,
                   color: Color(0xFFE5E7EB),
                 ),
@@ -619,7 +577,7 @@ class _Badge extends StatelessWidget {
         Text(
           text,
           style: const TextStyle(
-            fontSize: 10,
+            fontSize: 14,
             fontWeight: FontWeight.w700,
             color: _ink,
           ),
@@ -633,43 +591,51 @@ class _Stats extends StatelessWidget {
   const _Stats({required this.recipe});
   final RecipeDetailData recipe;
   @override
-  Widget build(BuildContext context) => GridView.count(
-    crossAxisCount: 2,
-    shrinkWrap: true,
-    physics: const NeverScrollableScrollPhysics(),
-    mainAxisSpacing: 10,
-    crossAxisSpacing: 10,
-    childAspectRatio: 1.35,
-    children: [
-      _Stat(
-        Icons.schedule,
-        'Thời gian nấu',
-        recipe.time,
-        const Color(0xFFD5F8E9),
-        _green,
-      ),
-      _Stat(
-        Icons.restaurant_menu,
-        'Độ khó',
-        recipe.level,
-        const Color(0xFFFFF2C9),
-        Colors.orange,
-      ),
-      _Stat(
-        Icons.local_fire_department_outlined,
-        'Calories',
-        '${recipe.calories} kcal',
-        const Color(0xFFFFE9D7),
-        Colors.deepOrange,
-      ),
-      _Stat(
-        Icons.people_outline,
-        'Khẩu phần',
-        '${recipe.servings} người',
-        const Color(0xFFFFE1F0),
-        Colors.pink,
-      ),
-    ],
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children:
+          [
+                _Stat(
+                  Icons.schedule,
+                  'Thời gian nấu',
+                  recipe.time,
+                  const Color(0xFFD5F8E9),
+                  _green,
+                ),
+                _Stat(
+                  Icons.restaurant_menu,
+                  'Độ khó',
+                  recipe.level,
+                  const Color(0xFFFFF2C9),
+                  Colors.orange,
+                ),
+                _Stat(
+                  Icons.local_fire_department_outlined,
+                  'Ước tính / suất',
+                  recipe.calories == null
+                      ? 'Chưa có số liệu'
+                      : '≈ ${recipe.calories} kcal',
+                  const Color(0xFFFFE9D7),
+                  Colors.deepOrange,
+                ),
+                _Stat(
+                  Icons.people_outline,
+                  'Khẩu phần',
+                  '${recipe.servings} người',
+                  const Color(0xFFFFE1F0),
+                  Colors.pink,
+                ),
+              ]
+              .map(
+                (stat) => SizedBox(
+                  width: (constraints.maxWidth - 10) / 2,
+                  child: stat,
+                ),
+              )
+              .toList(),
+    ),
   );
 }
 
@@ -680,22 +646,31 @@ class _Stat extends StatelessWidget {
   final Color bg, color;
   @override
   Widget build(BuildContext context) => Card(
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        CircleAvatar(
-          radius: 18,
-          backgroundColor: bg,
-          foregroundColor: color,
-          child: Icon(icon, size: 19),
-        ),
-        const SizedBox(height: 8),
-        Text(label, style: const TextStyle(fontSize: 11, color: _muted)),
-        Text(
-          value,
-          style: const TextStyle(fontWeight: FontWeight.w800, color: _ink),
-        ),
-      ],
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: bg,
+            foregroundColor: color,
+            child: Icon(icon, size: 19),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 14, color: _muted),
+          ),
+          Text(
+            value,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.w800, color: _ink),
+          ),
+        ],
+      ),
     ),
   );
 }
@@ -714,6 +689,13 @@ class _Ingredients extends StatelessWidget {
             Icons.shopping_basket_outlined,
             'Nguyên liệu',
             '$count/${recipe.ingredients.length} món có sẵn trong tủ',
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              'Khối lượng tham khảo cho cả món, phần ăn được trước nấu. Có thể điều chỉnh khi xuất nguyên liệu.',
+              style: TextStyle(fontSize: 15, height: 1.5, color: _muted),
+            ),
           ),
           const SizedBox(height: 10),
           ...recipe.ingredients.map(
@@ -749,7 +731,7 @@ class _Ingredients extends StatelessWidget {
                     child: Text(
                       e.name,
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 16,
                         fontWeight: FontWeight.w700,
                         color: e.available ? _ink : _muted,
                       ),
@@ -757,40 +739,61 @@ class _Ingredients extends StatelessWidget {
                   ),
                   Text(
                     e.amount,
-                    style: const TextStyle(fontSize: 10, color: _muted),
+                    style: const TextStyle(fontSize: 14, color: _muted),
                   ),
                 ],
               ),
             ),
           ),
-          if (recipe.ingredients.any(
-            (ingredient) => !ingredient.available,
-          )) ...[
+          ...[
             const SizedBox(height: 6),
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: () {
-                  final missing = recipe.ingredients
-                      .where((ingredient) => !ingredient.available)
-                      .map((ingredient) => ingredient.name)
-                      .toSet()
-                      .toList();
-                  final added = addMissingShoppingItems(recipe.name, missing);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        added == 0
-                            ? 'Nguyên liệu thiếu đã có trong danh sách đi chợ.'
-                            : 'Đã thêm $added nguyên liệu thiếu vào danh sách đi chợ.',
+                onPressed: () async {
+                  final day = menuDay(DateTime.now());
+                  final selection = await showMenuShoppingSheet(
+                    context,
+                    dishes: [
+                      PlannedDish(
+                        date: day,
+                        slot: 'dinner',
+                        name: recipe.name,
+                        ingredients: recipe.ingredients
+                            .map((i) => i.name)
+                            .toList(),
+                      ),
+                    ],
+                    stock: inventoryFoods,
+                    people: recipe.servings,
+                    weekly: false,
+                    day: day,
+                  );
+                  if (selection == null || !context.mounted) return;
+                  shoppingItems.addAll(
+                    selection.lines.map(
+                      (line) => ShoppingSummary(
+                        name: line.name,
+                        quantity: line.buyQuantity,
+                        unit: line.unit,
+                        note: line.note,
+                        neededDate: line.neededDate,
                       ),
                     ),
                   );
+                  shoppingRevision.value++;
+                  await persistShopping(shoppingItems, shoppingChecked);
+                  if (context.mounted) {
+                    showFoodNotification(
+                      context,
+                      title: 'Đã lên danh sách đi chợ',
+                      message:
+                          '${selection.lines.length} nguyên liệu cần mua · tồn kho không thay đổi.',
+                    );
+                  }
                 },
                 icon: const Icon(Icons.add_shopping_cart_outlined),
-                label: Text(
-                  'Thêm ${recipe.ingredients.where((ingredient) => !ingredient.available).length} món thiếu vào đi chợ',
-                ),
+                label: const Text('Xem lượng cần dùng & đi chợ'),
               ),
             ),
           ],
@@ -809,40 +812,51 @@ class _Nutrition extends StatelessWidget {
       children: [
         _Title(Icons.favorite_border, 'Dinh dưỡng (mỗi suất)', ''),
         const SizedBox(height: 12),
-        GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 9,
-          crossAxisSpacing: 9,
-          childAspectRatio: 1.8,
-          children: [
-            _Nutrient(
-              '${recipe.calories}',
-              'kcal',
-              const Color(0xFFF8F9FA),
-              _ink,
+        if (recipe.nutrition == null || !recipe.nutrition!.hasData)
+          const Text(
+            'Chưa đủ dữ liệu nguyên liệu để tính dinh dưỡng. Không thay dữ liệu thiếu bằng số 0.',
+            style: TextStyle(color: _muted, height: 1.4),
+          )
+        else ...[
+          const Text(
+            'Ước tính mỗi người · khối lượng nguyên liệu trước nấu',
+            style: TextStyle(fontSize: 15, height: 1.5, color: _muted),
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) => Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: List.generate(5, (i) {
+                final value = recipe.nutrition!.values[i];
+                final wide = MediaQuery.textScalerOf(context).scale(1) > 1.3;
+                return SizedBox(
+                  width: wide
+                      ? constraints.maxWidth
+                      : (constraints.maxWidth - 10) / 2,
+                  child: _Nutrient(
+                    value == null
+                        ? 'Chưa có dữ liệu'
+                        : '≈ ${value.toStringAsFixed(i == 0 ? 0 : 1)} ${nutritionUnits[i]}',
+                    nutritionLabels[i],
+                    i < 4 ? const Color(0xFFE9F8F1) : const Color(0xFFF5F7FA),
+                    _ink,
+                  ),
+                );
+              }),
             ),
-            _Nutrient(
-              '${recipe.protein}g',
-              'Protein',
-              const Color(0xFFFFEAEE),
-              Colors.pink,
+          ),
+          const SizedBox(height: 14),
+          if (recipe.nutrition!.missing.isNotEmpty)
+            Text(
+              'Chưa tính: ${recipe.nutrition!.missing.join(', ')}. Natri, đường và năng lượng thực tế có thể cao hơn sau khi nêm.',
+              style: const TextStyle(
+                fontSize: 15,
+                height: 1.5,
+                color: Color(0xFF9A5B00),
+              ),
             ),
-            _Nutrient(
-              '${recipe.carbs}g',
-              'Carbs',
-              const Color(0xFFFFF8E5),
-              Colors.orange,
-            ),
-            _Nutrient(
-              '${recipe.fat}g',
-              'Fat',
-              const Color(0xFFFFF1E8),
-              Colors.deepOrange,
-            ),
-          ],
-        ),
+        ],
       ],
     ),
   );
@@ -854,6 +868,7 @@ class _Nutrient extends StatelessWidget {
   final Color bg, color;
   @override
   Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
       color: bg,
       borderRadius: BorderRadius.circular(9),
@@ -869,7 +884,11 @@ class _Nutrient extends StatelessWidget {
             color: color,
           ),
         ),
-        Text(label, style: const TextStyle(fontSize: 10, color: _muted)),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 14, color: _muted),
+        ),
       ],
     ),
   );
@@ -907,7 +926,7 @@ class _Steps extends StatelessWidget {
                           '${entry.key + 1}',
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 12,
+                            fontSize: 16,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -932,7 +951,7 @@ class _Steps extends StatelessWidget {
                         Text(
                           step.text,
                           style: const TextStyle(
-                            fontSize: 12,
+                            fontSize: 16,
                             height: 1.55,
                             color: Color(0xFF4B5565),
                           ),
@@ -941,7 +960,7 @@ class _Steps extends StatelessWidget {
                         Text(
                           '⏱ ${step.minutes} phút',
                           style: const TextStyle(
-                            fontSize: 10,
+                            fontSize: 14,
                             fontWeight: FontWeight.w700,
                             color: _green,
                           ),
@@ -970,7 +989,7 @@ class _Steps extends StatelessWidget {
                                   child: Text(
                                     step.tip!,
                                     style: const TextStyle(
-                                      fontSize: 10,
+                                      fontSize: 14,
                                       color: Color(0xFFD97706),
                                     ),
                                   ),
@@ -1030,7 +1049,7 @@ class _Title extends StatelessWidget {
             if (subtitle.isNotEmpty)
               Text(
                 subtitle,
-                style: const TextStyle(fontSize: 10, color: _muted),
+                style: const TextStyle(fontSize: 14, color: _muted),
               ),
           ],
         ),

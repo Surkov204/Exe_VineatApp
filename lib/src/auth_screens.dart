@@ -1,21 +1,35 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
+import 'auth_error_messages.dart';
 import 'app_services.dart';
+import 'email_validation.dart';
 import 'household_data_repository.dart';
-import 'fridge_showcase.dart';
 import 'inventory_store.dart';
+import 'registration_screen.dart';
+import 'vineat_logo.dart';
 
 const _green = Color(0xFF079669);
 const _ink = Color(0xFF203044);
+const _allowDemoImport = bool.fromEnvironment('VINEAT_ALLOW_DEMO_IMPORT');
 
 class AppEntry extends StatelessWidget {
   const AppEntry({super.key});
 
   @override
   Widget build(BuildContext context) {
+    if (debugOtpDemoEnabled) {
+      return ValueListenableBuilder<bool>(
+        valueListenable: debugDemoAuthenticated,
+        builder: (context, authenticated, _) => authenticated
+            ? const AppShell()
+            : LoginScreen(onDemoAuthenticated: AppServices.signInDebugDemo),
+      );
+    }
     if (AppServices.initializationError case final error?) {
       return _StartupError(message: error);
     }
@@ -54,13 +68,7 @@ class _AuthSplash extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const SmartFridgeShowcase(
-                  inventoryCount: 3,
-                  expiringCount: 1,
-                  height: 190,
-                  preview: true,
-                  active: false,
-                ),
+                const VineatLogo(width: 180),
                 const SizedBox(height: 24),
                 const Text(
                   'Đang chuẩn bị căn bếp của bạn',
@@ -129,21 +137,51 @@ class _StartupError extends StatelessWidget {
 }
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({super.key, this.onDemoAuthenticated});
+
+  final Future<void> Function()? onDemoAuthenticated;
+
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   final _email = TextEditingController();
   final _otp = TextEditingController();
+  late final AnimationController _intro;
+  bool _introStarted = false;
   bool _sent = false;
   bool _busy = false;
   String? _error;
   String? _notice;
 
   @override
+  void initState() {
+    super.initState();
+    _intro = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_introStarted) return;
+    _introStarted = true;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _intro.value = 1;
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _intro.forward();
+      });
+    }
+  }
+
+  @override
   void dispose() {
+    _intro.dispose();
     _email.dispose();
     _otp.dispose();
     super.dispose();
@@ -151,8 +189,33 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _sendCode() async {
     final email = _email.text.trim();
-    if (!email.contains('@') || email.endsWith('@')) {
-      setState(() => _error = 'Vui lòng nhập địa chỉ email hợp lệ.');
+    final validationError = validateLoginEmail(
+      email,
+      cloudAuth: !debugOtpDemoEnabled,
+    );
+    if (validationError != null) {
+      setState(() {
+        _error = validationError;
+        _notice = null;
+      });
+      return;
+    }
+    if (debugOtpDemoEnabled) {
+      if (email.toLowerCase() != debugDemoEmail.toLowerCase()) {
+        setState(() => _error = 'Không thể gửi mã cho địa chỉ email này.');
+        return;
+      }
+      setState(() {
+        _busy = true;
+        _error = null;
+        _notice = null;
+      });
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _sent = true;
+      });
       return;
     }
     setState(() {
@@ -161,20 +224,23 @@ class _LoginScreenState extends State<LoginScreen> {
       _notice = null;
     });
     try {
-      await AppServices.client.auth.signInWithOtp(
-        email: email,
-        shouldCreateUser: true,
-      );
+      await AppServices.client.auth
+          .signInWithOtp(email: email, shouldCreateUser: true)
+          .timeout(const Duration(seconds: 12));
       if (!mounted) return;
       setState(() {
         _sent = true;
         _notice = 'Mã xác thực đã được gửi đến $email.';
       });
     } on AuthException catch (error) {
-      if (mounted) setState(() => _error = _humanize(error.message));
+      if (mounted) {
+        setState(() => _error = vietnameseAuthError(error, action: 'send'));
+      }
     } catch (_) {
       if (mounted) {
-        setState(() => _error = 'Không gửi được mã. Thử lại sau nhé.');
+        setState(
+          () => _error = 'Chưa gửi được mã. Kiểm tra kết nối mạng rồi thử lại.',
+        );
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -183,8 +249,36 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _verifyCode() async {
     final code = _otp.text.trim();
-    if (code.length < 6) {
-      setState(() => _error = 'Nhập mã gồm 6 chữ số trong email.');
+    if (!RegExp(r'^\d{6}$').hasMatch(code)) {
+      setState(() => _error = 'Nhập đúng mã 6 chữ số trong email.');
+      return;
+    }
+    if (debugOtpDemoEnabled) {
+      setState(() {
+        _busy = true;
+        _error = null;
+      });
+      await Future<void>.delayed(const Duration(milliseconds: 180));
+      if (!mounted) return;
+      final valid =
+          _email.text.trim().toLowerCase() == debugDemoEmail.toLowerCase() &&
+          code == debugDemoOtp;
+      if (!valid) {
+        setState(() {
+          _busy = false;
+          _error = 'Email hoặc mã xác thực chưa chính xác.';
+        });
+        return;
+      }
+      try {
+        await widget.onDemoAuthenticated?.call();
+      } catch (_) {
+        if (mounted) {
+          setState(() => _error = 'Chưa đăng nhập được. Vui lòng thử lại.');
+        }
+      } finally {
+        if (mounted) setState(() => _busy = false);
+      }
       return;
     }
     setState(() {
@@ -192,13 +286,17 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
-      await AppServices.client.auth.verifyOTP(
-        email: _email.text.trim(),
-        token: code,
-        type: OtpType.email,
-      );
+      await AppServices.client.auth
+          .verifyOTP(
+            email: _email.text.trim(),
+            token: code,
+            type: OtpType.email,
+          )
+          .timeout(const Duration(seconds: 12));
     } on AuthException catch (error) {
-      if (mounted) setState(() => _error = _humanize(error.message));
+      if (mounted) {
+        setState(() => _error = vietnameseAuthError(error, action: 'verify'));
+      }
     } catch (_) {
       if (mounted) setState(() => _error = 'Mã không hợp lệ hoặc đã hết hạn.');
     } finally {
@@ -217,19 +315,14 @@ class _LoginScreenState extends State<LoginScreen> {
         redirectTo: appOAuthRedirect,
       );
     } on AuthException catch (error) {
-      if (mounted) setState(() => _error = _humanize(error.message));
+      if (mounted) {
+        setState(() => _error = vietnameseAuthError(error, action: 'google'));
+      }
     } catch (_) {
       if (mounted) setState(() => _error = 'Chưa mở được đăng nhập Google.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
-  }
-
-  String _humanize(String value) {
-    if (value.toLowerCase().contains('rate limit')) {
-      return 'Bạn thao tác hơi nhanh. Vui lòng đợi một chút rồi thử lại.';
-    }
-    return value;
   }
 
   @override
@@ -238,160 +331,280 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF7FBF9),
       body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 28),
-              children: [
-                const SizedBox(height: 16),
-                const SmartFridgeShowcase(
-                  inventoryCount: 3,
-                  expiringCount: 1,
-                  height: 210,
-                  preview: true,
-                  // Show the interactive model on sign-in while keeping the
-                  // form immediately available below it.
-                  active: true,
-                ),
-                const SizedBox(height: 28),
-                const Text(
-                  'Chào mừng bạn về nhà',
-                  style: TextStyle(
-                    fontSize: 23,
-                    fontWeight: FontWeight.w900,
-                    color: _ink,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Đăng nhập để cùng gia đình quản lý thực phẩm, lên món và giảm lãng phí.',
-                  style: TextStyle(height: 1.45, color: Color(0xFF667085)),
-                ),
-                const SizedBox(height: 22),
-                if (!_sent) ...[
-                  TextField(
-                    controller: _email,
-                    keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.done,
-                    autofillHints: const [AutofillHints.email],
-                    decoration: const InputDecoration(
-                      labelText: 'Email của bạn',
-                      prefixIcon: Icon(Icons.mail_outline),
-                      border: OutlineInputBorder(),
-                    ),
-                    onSubmitted: (_) => _sendCode(),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 52,
-                    child: FilledButton(
-                      onPressed: _busy ? null : _sendCode,
-                      child: _busy
-                          ? const SizedBox.square(
-                              dimension: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
+        child: LayoutBuilder(
+          builder: (context, viewport) => Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: AnimatedBuilder(
+                animation: _intro,
+                builder: (context, _) {
+                  // Hold the full lockup on screen, spin once in perspective,
+                  // then move it to its resting place above the form.
+                  final raw = reduceMotion ? 1.0 : _intro.value;
+                  final spin = Curves.easeInOutCubic.transform(
+                    ((raw - .22) / .40).clamp(0.0, 1.0),
+                  );
+                  final progress = reduceMotion
+                      ? 1.0
+                      : Curves.easeInOutCubic.transform(
+                          ((raw - .62) / .38).clamp(0.0, 1.0),
+                        );
+                  final startWidth = math.min(200.0, viewport.maxWidth * .52);
+                  final logoWidth = startWidth + (112 - startWidth) * progress;
+                  final startHeight = startWidth * 635 / 800;
+                  final centerSpacer = math.max(
+                    0.0,
+                    (viewport.maxHeight - startHeight) / 2 - 16,
+                  );
+                  final formSpacer = math.max(
+                    20.0,
+                    (viewport.maxHeight - 520) / 2 - 36,
+                  );
+                  final formProgress = reduceMotion
+                      ? 1.0
+                      : Curves.easeOutCubic.transform(
+                          ((raw - .68) / .26).clamp(0.0, 1.0),
+                        );
+                  return ListView(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                    children: [
+                      SizedBox(
+                        height: centerSpacer * (1 - progress) + 36 * progress,
+                      ),
+                      Center(
+                        child: Transform(
+                          key: const ValueKey('login-logo-motion'),
+                          alignment: Alignment.center,
+                          transform: Matrix4.identity()
+                            ..setEntry(3, 2, .0015)
+                            ..rotateY(math.pi * 2 * spin)
+                            ..rotateX(.07 * math.sin(math.pi * spin)),
+                          child: VineatLogo(width: logoWidth),
+                        ),
+                      ),
+                      SizedBox(height: formSpacer),
+                      IgnorePointer(
+                        ignoring: formProgress < .98,
+                        child: Opacity(
+                          opacity: formProgress,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const Text(
+                                'Chào mừng bạn về nhà',
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w900,
+                                  color: _ink,
+                                ),
                               ),
-                            )
-                          : const Text('Tiếp tục bằng email'),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: _busy ? null : _google,
-                    icon: const Icon(Icons.g_mobiledata, size: 27),
-                    label: const Text('Tiếp tục với Google'),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(50),
-                    ),
-                  ),
-                ] else ...[
-                  TextField(
-                    controller: _otp,
-                    keyboardType: TextInputType.number,
-                    textInputAction: TextInputAction.done,
-                    autofillHints: const [AutofillHints.oneTimeCode],
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    maxLength: 6,
-                    decoration: const InputDecoration(
-                      labelText: 'Mã xác thực trong email',
-                      prefixIcon: Icon(Icons.password),
-                      border: OutlineInputBorder(),
-                    ),
-                    onSubmitted: (_) => _verifyCode(),
-                  ),
-                  SizedBox(
-                    height: 52,
-                    child: FilledButton(
-                      onPressed: _busy ? null : _verifyCode,
-                      child: _busy
-                          ? const SizedBox.square(
-                              dimension: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
+                              const SizedBox(height: 6),
+                              const Text(
+                                'Đăng nhập để cùng gia đình quản lý thực phẩm, lên món và giảm lãng phí.',
+                                style: TextStyle(
+                                  height: 1.45,
+                                  color: Color(0xFF667085),
+                                ),
                               ),
-                            )
-                          : const Text('Xác nhận và đăng nhập'),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: _busy
-                        ? null
-                        : () => setState(() {
-                            _sent = false;
-                            _otp.clear();
-                            _notice = null;
-                          }),
-                    child: const Text('Đổi email'),
-                  ),
-                ],
-                AnimatedSwitcher(
-                  duration: reduceMotion
-                      ? Duration.zero
-                      : const Duration(milliseconds: 220),
-                  transitionBuilder: (child, animation) => FadeTransition(
-                    opacity: animation,
-                    child: SlideTransition(
-                      position:
-                          Tween(
-                            begin: const Offset(0, .08),
-                            end: Offset.zero,
-                          ).animate(
-                            CurvedAnimation(
-                              parent: animation,
-                              curve: Curves.easeOutCubic,
-                            ),
+                              const SizedBox(height: 18),
+                              if (!_sent) ...[
+                                TextField(
+                                  controller: _email,
+                                  keyboardType: TextInputType.emailAddress,
+                                  autocorrect: false,
+                                  textCapitalization: TextCapitalization.none,
+                                  textInputAction: TextInputAction.done,
+                                  autofillHints: const [AutofillHints.email],
+                                  decoration: const InputDecoration(
+                                    labelText: 'Email của bạn',
+                                    prefixIcon: Icon(Icons.mail_outline),
+                                    filled: true,
+                                    fillColor: Colors.white,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.all(
+                                        Radius.circular(14),
+                                      ),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.all(
+                                        Radius.circular(14),
+                                      ),
+                                      borderSide: BorderSide(
+                                        color: Color(0xFFE4E9E7),
+                                      ),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.all(
+                                        Radius.circular(14),
+                                      ),
+                                      borderSide: BorderSide(
+                                        color: _green,
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                  ),
+                                  onSubmitted: (_) => _sendCode(),
+                                  onChanged: (_) {
+                                    if (_error != null) {
+                                      setState(() => _error = null);
+                                    }
+                                  },
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  height: 50,
+                                  child: FilledButton(
+                                    onPressed: _busy ? null : _sendCode,
+                                    child: _busy
+                                        ? const SizedBox.square(
+                                            dimension: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : const Text('Tiếp tục bằng email'),
+                                  ),
+                                ),
+                                if (!debugOtpDemoEnabled) ...[
+                                  const SizedBox(height: 10),
+                                  OutlinedButton.icon(
+                                    onPressed: _busy ? null : _google,
+                                    icon: const Icon(
+                                      Icons.g_mobiledata,
+                                      size: 27,
+                                    ),
+                                    label: const Text('Tiếp tục với Google'),
+                                    style: OutlinedButton.styleFrom(
+                                      minimumSize: const Size.fromHeight(48),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ] else ...[
+                                TextField(
+                                  controller: _otp,
+                                  keyboardType: TextInputType.number,
+                                  textInputAction: TextInputAction.done,
+                                  autofillHints: const [
+                                    AutofillHints.oneTimeCode,
+                                  ],
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                  ],
+                                  maxLength: 6,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Mã xác thực',
+                                    prefixIcon: Icon(Icons.password),
+                                    filled: true,
+                                    fillColor: Colors.white,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.all(
+                                        Radius.circular(14),
+                                      ),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.all(
+                                        Radius.circular(14),
+                                      ),
+                                      borderSide: BorderSide(
+                                        color: Color(0xFFE4E9E7),
+                                      ),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.all(
+                                        Radius.circular(14),
+                                      ),
+                                      borderSide: BorderSide(
+                                        color: _green,
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                  ),
+                                  onSubmitted: (_) => _verifyCode(),
+                                ),
+                                SizedBox(
+                                  height: 50,
+                                  child: FilledButton(
+                                    onPressed: _busy ? null : _verifyCode,
+                                    child: _busy
+                                        ? const SizedBox.square(
+                                            dimension: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : const Text('Xác nhận và đăng nhập'),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: _busy
+                                      ? null
+                                      : () => setState(() {
+                                          _sent = false;
+                                          _otp.clear();
+                                          _notice = null;
+                                        }),
+                                  child: const Text('Đổi email'),
+                                ),
+                              ],
+                              AnimatedSwitcher(
+                                duration: reduceMotion
+                                    ? Duration.zero
+                                    : const Duration(milliseconds: 220),
+                                transitionBuilder: (child, animation) =>
+                                    FadeTransition(
+                                      opacity: animation,
+                                      child: SlideTransition(
+                                        position:
+                                            Tween(
+                                              begin: const Offset(0, .08),
+                                              end: Offset.zero,
+                                            ).animate(
+                                              CurvedAnimation(
+                                                parent: animation,
+                                                curve: Curves.easeOutCubic,
+                                              ),
+                                            ),
+                                        child: child,
+                                      ),
+                                    ),
+                                child: _error != null
+                                    ? _MessageBanner(
+                                        key: const ValueKey('error'),
+                                        text: _error!,
+                                        error: true,
+                                      )
+                                    : _notice != null
+                                    ? _MessageBanner(
+                                        key: const ValueKey('notice'),
+                                        text: _notice!,
+                                      )
+                                    : const SizedBox.shrink(
+                                        key: ValueKey('empty'),
+                                      ),
+                              ),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Giữ mã xác thực của bạn riêng tư. ViNeat không bao giờ yêu cầu bạn gửi mật khẩu qua tin nhắn.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  height: 1.4,
+                                  color: Color(0xFF98A2B3),
+                                ),
+                              ),
+                            ],
                           ),
-                      child: child,
-                    ),
-                  ),
-                  child: _error != null
-                      ? _MessageBanner(
-                          key: const ValueKey('error'),
-                          text: _error!,
-                          error: true,
-                        )
-                      : _notice != null
-                      ? _MessageBanner(
-                          key: const ValueKey('notice'),
-                          text: _notice!,
-                        )
-                      : const SizedBox.shrink(key: ValueKey('empty')),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Mã xác thực có thời hạn. ViNeat không bao giờ yêu cầu bạn gửi mật khẩu qua tin nhắn.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 11,
-                    height: 1.4,
-                    color: Color(0xFF98A2B3),
-                  ),
-                ),
-              ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -406,6 +619,7 @@ class _MessageBanner extends StatelessWidget {
   final bool error;
   @override
   Widget build(BuildContext context) => Container(
+    width: double.infinity,
     margin: const EdgeInsets.only(top: 12),
     padding: const EdgeInsets.all(12),
     decoration: BoxDecoration(
@@ -414,6 +628,7 @@ class _MessageBanner extends StatelessWidget {
     ),
     child: Text(
       text,
+      textAlign: TextAlign.center,
       style: TextStyle(color: error ? Colors.red.shade800 : _green),
     ),
   );
@@ -427,6 +642,9 @@ class HouseholdGate extends StatefulWidget {
 
 class _HouseholdGateState extends State<HouseholdGate> {
   late Future<List<Household>> _households;
+  bool _needsRegistration = false;
+  bool _choosingFamily = false;
+  String? _familyChoiceError;
   List<FoodSummary>? _pendingDemoImport;
   String? _demoHouseholdId;
   String? _demoImportError;
@@ -439,9 +657,36 @@ class _HouseholdGateState extends State<HouseholdGate> {
   }
 
   Future<List<Household>> _prepareHouseholdData() async {
-    await restoreLocalDemoData();
-    final localDemo = await localDemoPreviewSnapshot();
+    final user = AppServices.client.auth.currentUser;
+    if (user == null) throw StateError('No authenticated user.');
+    final profile = await AppServices.client
+        .from('profiles')
+        .select('display_name')
+        .eq('id', user.id)
+        .maybeSingle();
+    if (profile == null) {
+      throw StateError('Missing profile for signed-in user.');
+    }
     final households = await HouseholdService.instance.restoreActive();
+    // A legacy account may still have the old default profile name while
+    // already belonging to a family; do not make it register a second time.
+    _needsRegistration = profileNeedsRegistration(
+      profile,
+      hasHousehold: households.isNotEmpty,
+    );
+    if (_needsRegistration) return const [];
+
+    // A new login has no saved choice; only a restored choice may skip this
+    // picker. Never load another family's inventory before the choice.
+    if (HouseholdService.instance.active.value == null &&
+        households.isNotEmpty) {
+      return households;
+    }
+
+    if (_allowDemoImport) await restoreLocalDemoData();
+    final localDemo = _allowDemoImport
+        ? await localDemoPreviewSnapshot()
+        : const <FoodSummary>[];
     if (households.isEmpty) {
       _pendingDemoImport = null;
       replaceInventoryFromRemote(records: const [], events: const []);
@@ -449,10 +694,12 @@ class _HouseholdGateState extends State<HouseholdGate> {
       return households;
     }
     try {
+      await restorePendingInventoryAdds();
       final snapshot = await HouseholdDataRepository.instance
           .loadActiveHousehold();
       final householdId = HouseholdService.instance.active.value?.id;
-      if (snapshot.inventory.isEmpty &&
+      if (_allowDemoImport &&
+          snapshot.inventory.isEmpty &&
           householdId != null &&
           localDemo.isNotEmpty &&
           !await HouseholdDataRepository.instance.hasImportedDemoInventory(
@@ -488,6 +735,31 @@ class _HouseholdGateState extends State<HouseholdGate> {
   void _refresh() => setState(() {
     _households = _prepareHouseholdData();
   });
+
+  void _finishRegistration() {
+    _refresh();
+  }
+
+  Future<void> _chooseFamily(Household household) async {
+    if (_choosingFamily) return;
+    setState(() {
+      _choosingFamily = true;
+      _familyChoiceError = null;
+    });
+    try {
+      await HouseholdService.instance.select(household);
+      _refresh();
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _familyChoiceError =
+              'Chưa mở được gia đình này. Kiểm tra kết nối rồi thử lại.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _choosingFamily = false);
+    }
+  }
 
   Future<void> _finishDemoImport({required bool import}) async {
     final householdId = _demoHouseholdId;
@@ -541,6 +813,7 @@ class _HouseholdGateState extends State<HouseholdGate> {
 
   @override
   Widget build(BuildContext context) => FutureBuilder<List<Household>>(
+    key: ObjectKey(_households),
     future: _households,
     builder: (context, snapshot) {
       if (snapshot.hasError) {
@@ -548,6 +821,22 @@ class _HouseholdGateState extends State<HouseholdGate> {
       }
       if (!snapshot.hasData) {
         return const _AuthSplash();
+      }
+      if (_needsRegistration) {
+        return RegistrationScreen(
+          email: AppServices.client.auth.currentUser?.email ?? '',
+          onCompleted: _finishRegistration,
+        );
+      }
+      if (HouseholdService.instance.active.value == null &&
+          snapshot.data!.isNotEmpty) {
+        return HouseholdPicker(
+          households: snapshot.data!,
+          busy: _choosingFamily,
+          error: _familyChoiceError,
+          onSelected: _chooseFamily,
+          onSignOut: () => AppServices.signOut(),
+        );
       }
       if (_pendingDemoImport != null) {
         return _DemoImportChoice(
@@ -558,9 +847,104 @@ class _HouseholdGateState extends State<HouseholdGate> {
           onStartEmpty: () => _finishDemoImport(import: false),
         );
       }
-      if (snapshot.data!.isEmpty) return _HouseholdSetup(onChanged: _refresh);
+      if (snapshot.data!.isEmpty) {
+        return _HouseholdSetup(onChanged: _finishRegistration);
+      }
       return const AppShell();
     },
+  );
+}
+
+class HouseholdPicker extends StatelessWidget {
+  const HouseholdPicker({
+    super.key,
+    required this.households,
+    required this.onSelected,
+    required this.onSignOut,
+    this.busy = false,
+    this.error,
+  });
+
+  final List<Household> households;
+  final ValueChanged<Household> onSelected;
+  final VoidCallback onSignOut;
+  final bool busy;
+  final String? error;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: const Color(0xFFF7FBF9),
+    appBar: AppBar(
+      backgroundColor: const Color(0xFFF7FBF9),
+      actions: [
+        TextButton(
+          onPressed: busy ? null : onSignOut,
+          child: const Text('Đăng xuất'),
+        ),
+      ],
+    ),
+    body: Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+          children: [
+            const Center(child: VineatLogo(width: 110)),
+            const SizedBox(height: 24),
+            const Text(
+              'Chọn gia đình của bạn',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                color: _ink,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Mỗi gia đình có tủ lạnh và danh sách đi chợ riêng. Bạn có thể đổi gia đình sau trong Hồ sơ.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Color(0xFF667085), height: 1.4),
+            ),
+            const SizedBox(height: 24),
+            for (final household in households) ...[
+              Card(
+                child: ListTile(
+                  key: ValueKey('choose-family-${household.id}'),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 10,
+                  ),
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFFE2F8EF),
+                    child: Icon(Icons.home_outlined, color: _green),
+                  ),
+                  title: Text(
+                    household.name,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: Text(
+                    household.role == 'owner' ? 'Chủ gia đình' : 'Thành viên',
+                  ),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 17),
+                  onTap: busy ? null : () => onSelected(household),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+            if (busy) const LinearProgressIndicator(minHeight: 3),
+            if (error != null) ...[
+              const SizedBox(height: 14),
+              Text(
+                error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red),
+              ),
+            ],
+          ],
+        ),
+      ),
+    ),
   );
 }
 
@@ -733,7 +1117,7 @@ class _HouseholdSetupState extends State<_HouseholdSetup> {
 
   Future<void> _signOut() async {
     try {
-      await AppServices.client.auth.signOut();
+      await AppServices.signOut();
     } catch (_) {
       if (mounted) setState(() => _error = 'Chưa đăng xuất được. Thử lại nhé.');
     }

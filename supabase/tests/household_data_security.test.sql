@@ -1,6 +1,16 @@
 begin;
 
-select plan(64);
+select plan(65);
+
+select ok(
+  has_table_privilege('authenticated', 'public.profiles', 'select')
+  and has_column_privilege('authenticated', 'public.profiles', 'display_name', 'update')
+  and has_column_privilege('authenticated', 'public.profiles', 'role_label', 'update')
+  and has_column_privilege('authenticated', 'public.profiles', 'diet', 'update')
+  and not has_column_privilege('authenticated', 'public.profiles', 'avatar_path', 'update')
+  and not has_table_privilege('anon', 'public.profiles', 'select'),
+  'signed-in users can edit only profile fields used by registration and settings'
+);
 
 select ok(
   not has_table_privilege('anon', 'public.households', 'select')

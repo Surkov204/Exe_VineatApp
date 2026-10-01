@@ -47,6 +47,7 @@ Future<void> showGlobalSearch(BuildContext context) async {
             imageIndex: detailResult.image,
             imagePath: original.imagePath,
             note: detailResult.note,
+            expiryDate: detailResult.expiryValue ?? original.expiry,
           ),
         );
       } else if (detailResult == FoodRemovalResult.deleted) {
@@ -77,18 +78,8 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
   int tab = 0;
   String query = '';
 
-  List<FoodDetailData> get foods => inventoryFoods
-      .map(
-        (food) => FoodDetailData.fromSummary(
-          name: food.name,
-          detail: food.detail,
-          status: food.status,
-          image: food.imageIndex,
-          id: food.id,
-          imagePath: food.imagePath,
-        ),
-      )
-      .toList();
+  List<FoodDetailData> get foods =>
+      inventoryFoods.map((food) => FoodDetailData.fromInventory(food)).toList();
 
   final recipes = <RecipeDetailData>[
     RecipeDetailData.fromSummary(

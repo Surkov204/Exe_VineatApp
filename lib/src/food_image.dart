@@ -31,6 +31,28 @@ class FoodImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final customPath = imagePath ?? customFoodImagePaths[name];
     if (customPath == null || customPath.isEmpty) {
+      if (assetIndex < 0) {
+        return Semantics(
+          label: 'Chưa có ảnh của $name',
+          child: Container(
+            width: width,
+            height: height,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFFE7F8F0), Color(0xFFD3EFE2)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.restaurant_outlined,
+              color: Color(0xFF14845E),
+              size: 28,
+            ),
+          ),
+        );
+      }
       return Image.asset(
         _fallbackAsset,
         width: width,

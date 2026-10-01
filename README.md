@@ -3,10 +3,11 @@
 ViNeat là prototype Flutter quản lý thực phẩm gia đình: tủ lạnh, scan hóa đơn,
 gợi ý món ăn, danh sách đi chợ, báo cáo sử dụng/lãng phí và chia sẻ dữ liệu gia đình.
 
-## Chạy demo local
+## Chạy app với Supabase cloud
 
-Không cần Supabase để trình diễn các luồng local-first. Cần Flutter stable và Android
-SDK (hoặc emulator/thiết bị Android):
+App mặc định kết nối project Supabase cloud của ViNeat bằng Project URL và
+publishable key công khai. Không cần Docker hay `supabase start` để chạy bằng
+Android Studio. Cần Flutter stable và Android SDK (hoặc emulator/thiết bị Android):
 
 ```powershell
 flutter pub get
@@ -21,8 +22,8 @@ Tạo APK cài thử:
 flutter build apk --release
 ```
 
-File đầu ra: `build/app/outputs/flutter-apk/app-release.apk`. APK này dùng để demo
-local, ký debug; không dùng để phát hành cửa hàng.
+File đầu ra: `build/app/outputs/flutter-apk/app-release.apk`. APK này dùng để demo,
+ký debug; không dùng để phát hành cửa hàng.
 
 ## Chạy với Supabase
 
@@ -40,7 +41,8 @@ local, ký debug; không dùng để phát hành cửa hàng.
    supabase functions deploy household
    ```
 
-3. Chạy app với URL và khóa public của project (anon/publishable):
+3. Chạy app bằng `flutter run` để dùng project ViNeat mặc định. Chỉ truyền Dart
+   defines nếu cần trỏ sang project Supabase khác:
 
    ```powershell
    flutter run `
@@ -54,13 +56,18 @@ local, ký debug; không dùng để phát hành cửa hàng.
 
 Khi đã cấu hình, app dùng email OTP/Google, tạo hoặc tham gia gia đình bằng mã,
 chọn gia đình đang hoạt động, xem/quản lý vai trò thành viên, và đồng bộ
-tủ lạnh/đi chợ/sự kiện qua Supabase. Khi một gia đình mới chưa có kho, mỗi gia
-đình chỉ được hỏi một lần để xem trước rồi nhập dữ liệu mẫu hoặc bắt đầu tủ trống.
+tủ lạnh/đi chợ/sự kiện qua Supabase. Sau khi xác thực OTP, tài khoản có hồ sơ
+mặc định được yêu cầu điền họ tên, vai trò và chế độ ăn; mã gia đình là tùy chọn.
+Nhập mã để dùng chung dữ liệu với gia đình đã có, hoặc đặt tên gia đình mới nếu
+không có mã. Gia đình cloud mới bắt đầu với kho trống; chỉ bật tính năng nhập
+dữ liệu mẫu khi chủ động chạy với `--dart-define=VINEAT_ALLOW_DEMO_IMPORT=true`.
 RLS giới hạn dữ liệu theo thành viên; ảnh gia đình nằm trong storage bucket private.
-Không có credentials của project trong repository, vì vậy chưa thể xác minh luồng
-đăng nhập và đồng bộ trên project hosted chỉ bằng bộ test local.
+Project URL và publishable key trong app là thông tin public; chúng không thay thế
+RLS hoặc quyền đăng nhập. Không có `service_role` hay Google client secret trong
+repository. Cần kiểm thử đăng nhập và đồng bộ trên project hosted bằng hai tài
+khoản thật; bộ test widget/local không chứng minh các luồng cloud hoạt động.
 
-### Backend local cho Android Emulator
+### Backend local cho Android Emulator (chỉ dùng khi chủ động thử offline)
 
 Để demo cả đăng nhập và dữ liệu gia đình mà chưa cần project cloud, cần Docker
 Desktop, Supabase CLI và Android Emulator:

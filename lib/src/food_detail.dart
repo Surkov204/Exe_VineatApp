@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'food_image.dart';
 import 'global_search.dart';
+import 'inventory_models.dart';
+import 'food_form_widgets.dart';
 
 const _green = Color(0xFF079669);
 const _ink = Color(0xFF253043);
@@ -23,6 +25,8 @@ class FoodDetailData {
     required this.image,
     this.id,
     this.imagePath,
+    this.updatedBy = '',
+    this.expiryValue,
   });
 
   final String name, category, quantity, price, purchaseDate, expiryDate;
@@ -30,6 +34,31 @@ class FoodDetailData {
   final int image;
   final String? id;
   final String? imagePath;
+  final String updatedBy;
+  final DateTime? expiryValue;
+
+  factory FoodDetailData.fromInventory(FoodSummary food) => FoodDetailData(
+    name: food.name,
+    category: _categoryFor(food.name),
+    quantity: food.detail.split('·').first.trim(),
+    price: food.detail.split('·').last.trim(),
+    purchaseDate: food.audit.purchaseDate == null
+        ? 'Chưa ghi nhận'
+        : _formatDate(food.audit.purchaseDate!),
+    expiryDate: food.expiry == null
+        ? 'Chưa có hạn dùng'
+        : _formatDate(food.expiry!),
+    expiryValue: food.expiry,
+    status: food.status,
+    addedBy: foodPersonName(food.audit.addedBy),
+    updatedBy: food.audit.updatedBy.isEmpty
+        ? 'Chưa cập nhật'
+        : foodPersonName(food.audit.updatedBy),
+    note: food.note,
+    image: food.imageIndex,
+    id: food.id,
+    imagePath: food.imagePath,
+  );
 
   factory FoodDetailData.fromSummary({
     required String name,
@@ -97,16 +126,32 @@ class FoodDetailData {
     return 'Kiểm tra hạn dùng trước khi sử dụng';
   }
 
-  FoodDetailData copyWith({String? quantity, String? price, String? note}) {
+  FoodDetailData copyWith({
+    String? quantity,
+    String? price,
+    String? note,
+    DateTime? expiryValue,
+  }) {
     return FoodDetailData(
       name: name,
       category: category,
       quantity: quantity ?? this.quantity,
       price: price ?? this.price,
       purchaseDate: purchaseDate,
-      expiryDate: expiryDate,
-      status: status,
+      expiryDate: expiryValue == null ? expiryDate : _formatDate(expiryValue),
+      expiryValue: expiryValue ?? this.expiryValue,
+      status: expiryValue == null
+          ? status
+          : FoodSummary(
+              name: name,
+              quantity: 1,
+              unit: 'phần',
+              priceVnd: 0,
+              imageIndex: image,
+              expiry: expiryValue,
+            ).status,
       addedBy: addedBy,
+      updatedBy: updatedBy,
       note: note ?? this.note,
       image: image,
       id: id,
@@ -390,14 +435,23 @@ class _FoodDetailScreenState extends State<FoodDetailScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
             child: Column(
               children: [
-                _DetailRow('Hạn sử dụng', food.expiryDate),
-                _DetailRow('Thêm bởi', food.addedBy),
-                _DetailRow(
-                  'Trạng thái',
-                  food.status,
-                  status: true,
-                  expired: expired,
-                  warning: warning,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _DetailRow('Thêm bởi', food.addedBy)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _DetailRow('Cập nhật cuối', food.updatedBy),
+                    ),
+                  ],
+                ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _DetailRow('Hạn sử dụng', food.expiryDate)),
+                    const SizedBox(width: 12),
+                    Expanded(child: _DetailRow('Trạng thái', food.status)),
+                  ],
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 14),
@@ -556,32 +610,28 @@ class _StatusBadge extends StatelessWidget {
 }
 
 class _DetailRow extends StatelessWidget {
-  const _DetailRow(
-    this.label,
-    this.value, {
-    this.status = false,
-    this.expired = false,
-    this.warning = false,
-  });
+  const _DetailRow(this.label, this.value);
   final String label, value;
-  final bool status, expired, warning;
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(vertical: 15),
     decoration: const BoxDecoration(
       border: Border(bottom: BorderSide(color: Color(0xFFF0F1F3))),
     ),
-    child: Row(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(label, style: const TextStyle(color: Color(0xFF667085))),
-        const Spacer(),
-        if (status)
-          _StatusBadge(text: value, expired: expired, warning: warning)
-        else
-          Text(
-            value,
-            style: const TextStyle(fontWeight: FontWeight.w700, color: _ink),
-          ),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 12, color: Color(0xFF667085)),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          value,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontWeight: FontWeight.w700, color: _ink),
+        ),
       ],
     ),
   );
@@ -595,9 +645,61 @@ class _EditFoodDialog extends StatefulWidget {
 }
 
 class _EditFoodDialogState extends State<_EditFoodDialog> {
-  late final quantity = TextEditingController(text: widget.food.quantity);
+  late final quantity = TextEditingController(
+    text: widget.food.quantity.split(' ').first,
+  );
+  late String unit = widget.food.quantity.split(' ').skip(1).join(' ');
   late final price = TextEditingController(text: widget.food.price);
   late final note = TextEditingController(text: widget.food.note);
+  DateTime? _expiry;
+  String? _error;
+  @override
+  void initState() {
+    super.initState();
+    _expiry = widget.food.expiryValue;
+  }
+
+  Future<void> _pickExpiry() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _expiry ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      helpText: 'Chọn hạn sử dụng',
+      cancelText: 'Hủy',
+      confirmText: 'Chọn',
+      builder: foodDatePickerTheme,
+    );
+    if (picked != null && mounted) setState(() => _expiry = picked);
+  }
+
+  void _save() {
+    final amount = double.tryParse(
+      RegExp(
+            r'^\s*(\d+(?:[.,]\d+)?)',
+          ).firstMatch(quantity.text)?.group(1)?.replaceAll(',', '.') ??
+          '',
+    );
+    if (amount == null ||
+        amount <= 0 ||
+        price.text.trim().isEmpty ||
+        !RegExp(r'\d').hasMatch(price.text)) {
+      setState(
+        () => _error = 'Nhập lượng còn lại lớn hơn 0 và giá tiền hợp lệ.',
+      );
+      return;
+    }
+    Navigator.pop(
+      context,
+      widget.food.copyWith(
+        quantity: '${quantity.text.trim().replaceAll(',', '.')} $unit',
+        price: price.text.trim(),
+        note: note.text.trim(),
+        expiryValue: _expiry,
+      ),
+    );
+  }
+
   @override
   void dispose() {
     quantity.dispose();
@@ -608,27 +710,102 @@ class _EditFoodDialogState extends State<_EditFoodDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: Text('Chỉnh sửa ${widget.food.name}'),
+    backgroundColor: Colors.white,
+    surfaceTintColor: Colors.transparent,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+    title: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Chỉnh sửa thực phẩm',
+          style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          widget.food.name,
+          style: const TextStyle(fontSize: 14, color: _green),
+        ),
+      ],
+    ),
     content: SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           TextField(
             controller: quantity,
-            decoration: const InputDecoration(labelText: 'Số lượng'),
+            decoration: const InputDecoration(
+              labelText: 'Lượng còn lại',
+              helperText: 'Nhập lượng còn lại, ví dụ: 0.5 hoặc 2',
+              prefixIcon: Icon(Icons.scale_outlined),
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 10),
+          FoodChoiceField(
+            label: 'Đơn vị',
+            value: unit,
+            options: {
+              unit,
+              'kg',
+              'gram',
+              'g',
+              'quả',
+              'bó',
+              'cây',
+              'hộp',
+              'chai',
+              'miếng',
+              'phần',
+            }.where((v) => v.isNotEmpty).toList(),
+            onChanged: (value) => setState(() => unit = value),
           ),
           const SizedBox(height: 10),
           TextField(
             controller: price,
-            decoration: const InputDecoration(labelText: 'Giá tiền'),
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Giá trị còn lại (đ)',
+              prefixIcon: Icon(Icons.payments_outlined),
+              border: OutlineInputBorder(),
+            ),
           ),
           const SizedBox(height: 10),
+          InkWell(
+            key: const ValueKey('edit-expiry-date'),
+            onTap: _pickExpiry,
+            child: InputDecorator(
+              decoration: const InputDecoration(
+                labelText: 'Hạn sử dụng',
+                prefixIcon: Icon(Icons.event_outlined),
+                suffixIcon: Icon(Icons.edit_calendar_outlined),
+                border: OutlineInputBorder(),
+              ),
+              child: Text(
+                _expiry == null
+                    ? 'Chọn ngày hết hạn'
+                    : FoodDetailData._formatDate(_expiry!),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
           TextField(
             controller: note,
             minLines: 2,
             maxLines: 3,
-            decoration: const InputDecoration(labelText: 'Ghi chú'),
+            decoration: const InputDecoration(
+              labelText: 'Ghi chú',
+              border: OutlineInputBorder(),
+            ),
           ),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.redAccent),
+              ),
+            ),
         ],
       ),
     ),
@@ -637,17 +814,7 @@ class _EditFoodDialogState extends State<_EditFoodDialog> {
         onPressed: () => Navigator.pop(context),
         child: const Text('Hủy'),
       ),
-      FilledButton(
-        onPressed: () => Navigator.pop(
-          context,
-          widget.food.copyWith(
-            quantity: quantity.text.trim(),
-            price: price.text.trim(),
-            note: note.text.trim(),
-          ),
-        ),
-        child: const Text('Lưu'),
-      ),
+      FilledButton(onPressed: _save, child: const Text('Lưu')),
     ],
   );
 }

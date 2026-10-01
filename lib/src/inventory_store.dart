@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
 import 'app_services.dart';
 import 'household_data_repository.dart';
@@ -11,6 +12,7 @@ import 'inventory_models.dart';
 export 'inventory_models.dart'
     show
         FoodSummary,
+        InventoryAudit,
         ShoppingSummary,
         InventoryItemRecord,
         InventoryEvent,
@@ -96,6 +98,70 @@ final inventoryFoods = <FoodSummary>[...demoInventorySeed];
 final inventoryRevision = ValueNotifier<int>(0);
 final customFoodImagePaths = <String, String>{};
 final inventoryEvents = <InventoryEvent>[];
+final _pendingInventoryAdds = <String, FoodSummary>{};
+String? _pendingInventoryScope;
+Future<void> _pendingWriteQueue = Future<void>.value();
+
+Future<void> restorePendingInventoryAdds() async {
+  final scope = _householdCacheScope();
+  if (scope == null || _pendingInventoryScope == scope) return;
+  _pendingInventoryScope = scope;
+  _pendingInventoryAdds.clear();
+  final preferences = await SharedPreferences.getInstance();
+  final raw = preferences.getString('vineat.pending_adds.$scope');
+  if (raw == null || _householdCacheScope() != scope) return;
+  try {
+    for (final row in jsonDecode(raw) as List) {
+      final food = FoodSummary.fromJson(row as Map);
+      _pendingInventoryAdds[food.id] = food;
+    }
+  } catch (_) {
+    /* Preserve the cached payload if it cannot be read. */
+  }
+}
+
+Future<void> _persistPendingInventoryAdds() async {
+  final scope = _pendingInventoryScope;
+  if (scope == null) return;
+  final encoded = jsonEncode(
+    _pendingInventoryAdds.values.map((f) => f.toJson()).toList(),
+  );
+  _pendingWriteQueue = _pendingWriteQueue.then((_) async {
+    await (await SharedPreferences.getInstance()).setString(
+      'vineat.pending_adds.$scope',
+      encoded,
+    );
+  });
+  await _pendingWriteQueue;
+}
+
+Future<bool> retryPendingInventoryAdds() async {
+  await restorePendingInventoryAdds();
+  var success = true;
+  for (final food in List<FoodSummary>.of(_pendingInventoryAdds.values)) {
+    final saved = await _withRemoteSync(
+      () => HouseholdDataRepository.instance.upsertInventory(
+        food,
+        food.id,
+        eventType: 'added',
+        localImagePath: food.imagePath,
+      ),
+    );
+    if (saved) _pendingInventoryAdds.remove(food.id);
+    success = success && saved;
+  }
+  await _persistPendingInventoryAdds();
+  if (success && AppServices.configured) {
+    final snapshot = await HouseholdDataRepository.instance
+        .loadActiveHousehold();
+    replaceInventoryFromRemote(
+      records: snapshot.inventory,
+      events: snapshot.events,
+    );
+  }
+  return success;
+}
+
 final shoppingInventoryLinks = <String, ShoppingInventoryLink>{};
 final shoppingItems = AppServices.configured
     ? <ShoppingSummary>[]
@@ -316,28 +382,59 @@ Future<void> _persistInventory() {
   return write;
 }
 
-void addFoodsToInventory(Iterable<FoodSummary> foods) {
-  for (final food in foods) {
+String get _inventoryActor {
+  if (!AppServices.configured) return 'Bạn';
+  final user = AppServices.client.auth.currentUser;
+  return AppServices.inventoryActorUserId == user?.id &&
+          AppServices.inventoryActorName != 'Bạn'
+      ? AppServices.inventoryActorName
+      : user?.userMetadata?['display_name'] as String? ??
+            user?.userMetadata?['full_name'] as String? ??
+            'Bạn';
+}
+
+Future<bool> addFoodsToInventory(Iterable<FoodSummary> foods) async {
+  final writes = <Future<bool>>[];
+  for (final input in foods) {
+    final food = input.copyWith(
+      audit: InventoryAudit(
+        purchaseDate: input.audit.purchaseDate ?? DateTime.now(),
+        addedBy: input.audit.addedBy.isEmpty
+            ? _inventoryActor
+            : input.audit.addedBy,
+      ),
+    );
     inventoryFoods.add(food);
+    if (AppServices.configured) {
+      final scope = _householdCacheScope();
+      if (_pendingInventoryScope != scope) _pendingInventoryAdds.clear();
+      _pendingInventoryScope = scope;
+      _pendingInventoryAdds[food.id] = food;
+    }
     _recordEvent('added', food);
     final id = food.id;
-    _withRemoteSync(() async {
-      await HouseholdDataRepository.instance.upsertInventory(
-        food,
-        id,
-        localImagePath: customFoodImagePaths[food.id] ?? food.imagePath,
-      );
-      await HouseholdDataRepository.instance.logInventoryEvent(
-        id: id,
-        eventType: 'added',
-        quantity: InventoryItemRecord.fromSummary(food).quantity,
-        valueVnd: InventoryItemRecord.fromSummary(food).priceVnd,
-        metadata: {'unit': InventoryItemRecord.fromSummary(food).unit},
-      );
-    });
+    writes.add(
+      _withRemoteSync(() async {
+        await HouseholdDataRepository.instance.upsertInventory(
+          food,
+          id,
+          localImagePath: customFoodImagePaths[food.id] ?? food.imagePath,
+          eventType: 'added',
+        );
+        _pendingInventoryAdds.remove(food.id);
+        await _persistPendingInventoryAdds();
+      }),
+    );
   }
   inventoryRevision.value++;
   unawaited(_persistInventory());
+  await _persistPendingInventoryAdds();
+  final saved = (await Future.wait(writes)).every((success) => success);
+  if (!saved && HouseholdDataRepository.instance.syncStatus.value == null) {
+    HouseholdDataRepository.instance.syncStatus.value =
+        'Có thực phẩm đang chờ đồng bộ. Bấm Thử lại để lưu vào tủ lạnh gia đình.';
+  }
+  return saved;
 }
 
 void removeFoodFromInventory(FoodSummary food) {
@@ -358,13 +455,6 @@ void _removeFood(FoodSummary food, {required String eventType}) {
         discarded: eventType == 'discarded',
       );
     } else {
-      await HouseholdDataRepository.instance.logInventoryEvent(
-        id: id,
-        eventType: 'updated',
-        quantity: 0,
-        valueVnd: 0,
-        metadata: {'action': 'removed'},
-      );
       await HouseholdDataRepository.instance.deleteInventory(id);
     }
   });
@@ -375,7 +465,16 @@ void _removeFood(FoodSummary food, {required String eventType}) {
 void updateFoodInInventory(FoodSummary before, FoodSummary after) {
   final index = inventoryFoods.indexOf(before);
   if (index < 0) return;
-  final updated = after.copyWith(id: before.id);
+  final updated = after.copyWith(
+    id: before.id,
+    householdId: before.householdId,
+    audit: InventoryAudit(
+      purchaseDate: before.audit.purchaseDate,
+      addedBy: before.audit.addedBy,
+      updatedBy: _inventoryActor,
+      updatedAt: DateTime.now(),
+    ),
+  );
   inventoryFoods[index] = updated;
   _recordEvent('updated', after);
   _withRemoteSync(() async {
@@ -383,13 +482,6 @@ void updateFoodInInventory(FoodSummary before, FoodSummary after) {
       updated,
       updated.id,
       localImagePath: customFoodImagePaths[updated.id] ?? updated.imagePath,
-    );
-    await HouseholdDataRepository.instance.logInventoryEvent(
-      id: updated.id,
-      eventType: 'updated',
-      quantity: InventoryItemRecord.fromSummary(updated).quantity,
-      valueVnd: InventoryItemRecord.fromSummary(updated).priceVnd,
-      metadata: {'unit': updated.unit},
     );
   });
   inventoryRevision.value++;
@@ -414,6 +506,7 @@ void recordRecipeCooked(String recipeName) {
       unit: 'bữa',
       valueVnd: 0,
       occurredAt: DateTime.now(),
+      metadata: {'actor_name': _inventoryActor},
     ),
   );
   inventoryRevision.value++;
@@ -444,6 +537,11 @@ bool consumeFoodAmount(
       unit: current.unit,
       valueVnd: consumedValue,
       occurredAt: DateTime.now(),
+      metadata: {
+        'actor_name': _inventoryActor,
+        'inventory_item_id': food.id,
+        'remaining_quantity': current.quantity - amount,
+      },
     ),
   );
   final remaining = current.quantity - amount;
@@ -481,6 +579,12 @@ void replaceInventoryFromRemote({
   inventoryFoods
     ..clear()
     ..addAll(records.map(_summaryFromRecord));
+  if (_pendingInventoryScope == _householdCacheScope()) {
+    final serverIds = records.map((r) => r.id).toSet();
+    _pendingInventoryAdds.removeWhere((id, _) => serverIds.contains(id));
+    inventoryFoods.addAll(_pendingInventoryAdds.values);
+    unawaited(_persistPendingInventoryAdds());
+  }
   customFoodImagePaths
     ..clear()
     ..addEntries(
@@ -518,22 +622,24 @@ FoodSummary _summaryFromRecord(InventoryItemRecord record) {
   return FoodSummary.fromRecord(record);
 }
 
-void _withRemoteSync(Future<void> Function() operation) {
+Future<bool> _withRemoteSync(Future<void> Function() operation) async {
   if (!AppServices.configured ||
       HouseholdService.instance.active.value == null) {
-    return;
+    return true;
   }
   final status = HouseholdDataRepository.instance.syncStatus;
-  unawaited(() async {
-    status.value = 'Đang đồng bộ dữ liệu gia đình…';
-    try {
-      await operation();
-      status.value = null;
-    } catch (_) {
-      status.value =
-          'Chưa đồng bộ được. Dữ liệu trên thiết bị vẫn được giữ lại; hãy kiểm tra mạng và thử lại.';
-    }
-  }());
+  status.value = 'Đang đồng bộ dữ liệu gia đình…';
+  try {
+    await operation();
+    status.value = null;
+    return true;
+  } catch (error) {
+    final code = error is PostgrestException ? error.code : null;
+    status.value = code == '42501'
+        ? 'Máy chủ từ chối quyền lưu thực phẩm. Vui lòng thử lại hoặc đăng nhập lại.'
+        : 'Chưa đồng bộ được${code == null ? '' : ' (mã $code)'}. Vui lòng kiểm tra kết nối và thử lại.';
+    return false;
+  }
 }
 
 String? _householdCacheScope() {
@@ -558,7 +664,11 @@ void _recordEvent(String type, FoodSummary food) {
       unit: item.unit,
       valueVnd: item.priceVnd,
       occurredAt: DateTime.now(),
-      metadata: {'source': type == 'added' ? 'manual_or_scan' : 'inventory'},
+      metadata: {
+        'source': type == 'added' ? 'manual_or_scan' : 'inventory',
+        'actor_name': _inventoryActor,
+        'inventory_item_id': food.id,
+      },
     ),
   );
   unawaited(_persistEvents());
@@ -581,16 +691,7 @@ void setShoppingPurchased(ShoppingSummary item, bool purchased) {
   final existingLink = shoppingInventoryLinks[key];
   if (purchased) {
     if (existingLink != null) return;
-    final existingFood = inventoryFoods.where(
-      (food) =>
-          food.name.trim().toLowerCase() == item.name.trim().toLowerCase(),
-    );
-    if (existingFood.isNotEmpty) {
-      shoppingInventoryLinks[key] = ShoppingInventoryLink(
-        food: existingFood.first,
-        createdByPurchase: false,
-      );
-    } else {
+    {
       final food = FoodSummary(
         householdId: item.householdId,
         name: item.name,
@@ -600,6 +701,10 @@ void setShoppingPurchased(ShoppingSummary item, bool purchased) {
         expiry: null,
         imageIndex: item.category.hashCode.abs() % 20,
         note: item.note,
+        audit: InventoryAudit(
+          purchaseDate: DateTime.now(),
+          addedBy: _inventoryActor,
+        ),
       );
       inventoryFoods.add(food);
       shoppingInventoryLinks[key] = ShoppingInventoryLink(

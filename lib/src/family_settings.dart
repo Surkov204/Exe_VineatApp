@@ -335,12 +335,12 @@ class _FamilySettingsState extends State<FamilySettings> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Mã gia đình chưa khả dụng trong bản demo cục bộ.',
+            'Mã gia đình cần kết nối với dịch vụ đồng bộ.',
             style: TextStyle(color: _ink, fontWeight: FontWeight.w700),
           ),
           SizedBox(height: 5),
           Text(
-            'Khi kết nối Supabase, bạn có thể tạo mã mời hoặc tham gia nhiều gia đình.',
+            'Hiện chưa thể tạo mã mời hoặc tham gia gia đình trên thiết bị này.',
             style: TextStyle(fontSize: 11, color: _muted),
           ),
         ],
@@ -415,7 +415,12 @@ class _FamilySettingsState extends State<FamilySettings> {
                       );
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Đã sao chép mã mời')),
+                          const SnackBar(
+                            content: Text(
+                              'Đã sao chép mã mời',
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
                         );
                       }
                     },

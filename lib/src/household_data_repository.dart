@@ -91,10 +91,18 @@ class HouseholdDataRepository {
       );
     }
     final client = AppServices.client;
+    final profile = await client
+        .from('profiles')
+        .select('display_name')
+        .eq('id', client.auth.currentUser!.id)
+        .maybeSingle();
+    AppServices.inventoryActorName =
+        profile?['display_name'] as String? ?? 'Bạn';
+    AppServices.inventoryActorUserId = client.auth.currentUser!.id;
     final rows = await client
         .from('inventory_items')
         .select(
-          'id,household_id,name,quantity,unit,price_vnd,expiry_date,image_index,image_path,note',
+          'id,household_id,name,quantity,unit,price_vnd,expiry_date,image_index,image_path,note,purchase_date,created_by_name,updated_by_name,updated_at',
         )
         .eq('household_id', householdId)
         .order('expiry_date');
@@ -140,7 +148,11 @@ class HouseholdDataRepository {
         .map(
           (row) => InventoryEvent(
             id: row['id'] as String,
-            type: _eventType(row['event_type'] as String? ?? 'updated'),
+            type:
+                row['metadata'] is Map &&
+                    (row['metadata'] as Map)['action'] == 'removed'
+                ? 'removed'
+                : _eventType(row['event_type'] as String? ?? 'updated'),
             name:
                 namesById[row['inventory_item_id']] ??
                 (row['metadata'] is Map
@@ -157,9 +169,11 @@ class HouseholdDataRepository {
                   row['occurred_at'] as String? ?? '',
                 )?.toLocal() ??
                 DateTime.now(),
-            metadata: row['metadata'] is Map
-                ? Map<String, Object?>.from(row['metadata'] as Map)
-                : const {},
+            metadata: {
+              if (row['metadata'] is Map)
+                ...Map<String, Object?>.from(row['metadata'] as Map),
+              'inventory_item_id': row['inventory_item_id'],
+            },
           ),
         )
         .toList();
@@ -410,7 +424,7 @@ class HouseholdDataRepository {
     final shoppingRows = await AppServices.client
         .from('shopping_items')
         .select(
-          'id,household_id,name,quantity,unit,category,priority,note,checked_at,inventory_item_id',
+          'id,household_id,name,quantity,unit,category,priority,note,checked_at,inventory_item_id,menu_plan_id,needed_date,menu_day',
         )
         .eq('household_id', householdId)
         .order('created_at');
@@ -462,6 +476,12 @@ class HouseholdDataRepository {
       imageIndex: (row['image_index'] as num?)?.toInt() ?? 0,
       imagePath: imagePath,
       note: row['note'] as String? ?? '',
+      audit: InventoryAudit(
+        purchaseDate: DateTime.tryParse(row['purchase_date'] as String? ?? ''),
+        addedBy: row['created_by_name'] as String? ?? '',
+        updatedBy: row['updated_by_name'] as String? ?? '',
+        updatedAt: DateTime.tryParse(row['updated_at'] as String? ?? ''),
+      ),
     );
   }
 
@@ -474,6 +494,9 @@ class HouseholdDataRepository {
     return ShoppingSummary(
       id: row['id'] as String?,
       householdId: row['household_id'] as String? ?? _householdId,
+      menuPlanId: row['menu_plan_id'] as String?,
+      neededDate: DateTime.tryParse(row['needed_date'] as String? ?? ''),
+      menuDay: DateTime.tryParse(row['menu_day'] as String? ?? ''),
       name: row['name'] as String? ?? 'Thực phẩm',
       quantity: (row['quantity'] as num?)?.toDouble() ?? 1,
       unit: row['unit'] as String? ?? 'phần',
@@ -488,6 +511,7 @@ class HouseholdDataRepository {
     FoodSummary food,
     String id, {
     String? localImagePath,
+    String eventType = 'updated',
   }) async {
     final scope = _currentScope;
     await _ensureScope(scope);
@@ -507,21 +531,29 @@ class HouseholdDataRepository {
       scope,
     );
     _assertScope(scope);
-    await AppServices.client.from('inventory_items').upsert({
-      'id': id,
-      'household_id': householdId,
-      'name': record.name,
-      'quantity': record.quantity,
-      'unit': record.unit,
-      'price_vnd': record.priceVnd,
-      'purchase_date': DateTime.now().toIso8601String().substring(0, 10),
-      'expiry_date': record.expiry?.toIso8601String().substring(0, 10),
-      'image_index': record.imageIndex,
-      'image_path': remoteImagePath,
-      'note': record.note,
-      'source': 'manual',
-      'created_by': AppServices.client.auth.currentUser?.id,
-    });
+    await AppServices.client.rpc(
+      'save_inventory_item',
+      params: {
+        'p_event_type': eventType,
+        'p_item': {
+          'id': id,
+          'household_id': householdId,
+          'name': record.name,
+          'quantity': record.quantity,
+          'unit': record.unit,
+          'price_vnd': record.priceVnd,
+          'purchase_date': (record.audit.purchaseDate ?? DateTime.now())
+              .toIso8601String()
+              .substring(0, 10),
+          'expiry_date': record.expiry?.toIso8601String().substring(0, 10),
+          'image_index': record.imageIndex,
+          'image_path': remoteImagePath,
+          'note': record.note,
+          'source': 'manual',
+          'created_by': AppServices.client.auth.currentUser?.id,
+        },
+      },
+    );
     _assertScope(scope);
   }
 
@@ -564,11 +596,10 @@ class HouseholdDataRepository {
     await _ensureScope(scope);
     final householdId = _householdId;
     if (householdId == null) return;
-    await AppServices.client
-        .from('inventory_items')
-        .delete()
-        .eq('id', id)
-        .eq('household_id', householdId);
+    await AppServices.client.rpc(
+      'remove_inventory_item',
+      params: {'p_item_id': id},
+    );
     _assertScope(scope);
   }
 
@@ -662,6 +693,9 @@ class HouseholdDataRepository {
         'category': _categoryCode(item.category),
         'priority': _priorityCode(item.priority),
         'note': item.note.isEmpty ? null : item.note,
+        'menu_plan_id': item.menuPlanId,
+        'needed_date': item.neededDate?.toIso8601String().split('T').first,
+        'menu_day': item.menuDay?.toIso8601String().split('T').first,
         'checked_at': checked.contains(item.id)
             ? DateTime.now().toUtc().toIso8601String()
             : null,
@@ -734,6 +768,37 @@ class HouseholdDataRepository {
         'p_recipe_name': recipeName,
         'p_servings': 1,
         'p_items': items,
+      },
+    );
+    _assertScope(scope);
+  }
+
+  Future<void> confirmUsage(
+    String operationId,
+    List<InventoryUsage> uses, {
+    String? dishName,
+    int people = 1,
+  }) async {
+    final scope = _currentScope;
+    await _ensureScope(scope);
+    final householdId = _householdId;
+    if (householdId == null) throw StateError('Chưa chọn gia đình');
+    await AppServices.client.rpc(
+      'confirm_inventory_usage',
+      params: {
+        'p_operation': operationId,
+        'p_household': householdId,
+        'p_dish_name': dishName,
+        'p_people': people,
+        'p_items': uses
+            .map(
+              (use) => {
+                'inventory_item_id': _ensureFoodId(use.food),
+                'quantity': use.quantity,
+                'unit': use.food.unit,
+              },
+            )
+            .toList(),
       },
     );
     _assertScope(scope);
@@ -852,6 +917,9 @@ String _shoppingFingerprint(ShoppingSummary item, {required bool checked}) =>
       item.priority,
       item.createdBy,
       item.category,
+      item.menuPlanId,
+      item.neededDate?.toIso8601String(),
+      item.menuDay?.toIso8601String(),
       checked,
     ]);
 

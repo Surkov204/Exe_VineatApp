@@ -1,32 +1,26 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_tutorial.dart';
 import 'app_services.dart';
+import 'diet_preferences.dart';
 import 'family_settings.dart';
 import 'global_search.dart';
-import 'inventory_store.dart';
+import 'expiry_assistant.dart';
+import 'profile_email_screen.dart';
+import 'fridge_cleanup_screen.dart';
 
 const _green = Color(0xFF079669);
 const _ink = Color(0xFF253043);
-const _muted = Color(0xFF98A2B3);
+const _muted = Color(0xFF667085);
 
 class _ProfileEditResult {
   const _ProfileEditResult({required this.name, required this.role});
 
   final String name;
   final String role;
-}
-
-class _ProfileOption {
-  const _ProfileOption({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-  });
-
-  final String title;
-  final String subtitle;
-  final IconData icon;
 }
 
 class ProfileScreen extends StatefulWidget {
@@ -37,88 +31,173 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  String name = 'Mẹ';
-  String role = 'Chủ tủ';
-  int diet = 0;
-  final notifications = <bool>[true, true, true, true];
+  String name = AppServices.configured ? 'Bạn' : 'Mẹ';
+  String role = AppServices.configured ? 'Thành viên' : 'Chủ tủ';
+  DietKind diet = DietKind.normal;
+  bool _savingDiet = false;
   bool _signOutBusy = false;
+  ExpiryPreferences expiryPrefs = const ExpiryPreferences();
+  bool _savingExpiry = false;
+
+  @override
+  void initState() {
+    super.initState();
+    ExpiryPreferences.load()
+        .then((value) {
+          if (mounted) setState(() => expiryPrefs = value);
+        })
+        .catchError((_) {});
+    if (AppServices.configured) {
+      unawaited(_loadCloudProfile());
+    } else {
+      unawaited(
+        SharedPreferences.getInstance()
+            .then((prefs) {
+              if (mounted) {
+                setState(
+                  () => name =
+                      prefs.getString('vineat.local.profile_name') ?? name,
+                );
+              }
+            })
+            .catchError((_) {}),
+      );
+    }
+  }
+
+  Future<void> _loadCloudProfile() async {
+    final userId = AppServices.client.auth.currentUser?.id;
+    if (userId == null) return;
+    try {
+      final profile = await AppServices.client
+          .from('profiles')
+          .select('display_name,role_label,diet')
+          .eq('id', userId)
+          .maybeSingle();
+      if (profile == null || !mounted) return;
+      setState(() {
+        name = profile['display_name'] as String? ?? name;
+        role = profile['role_label'] as String? ?? role;
+        diet = DietKind.fromId(profile['diet'] as String?);
+      });
+      applyPreferredDiet(diet);
+    } catch (_) {
+      if (mounted) {
+        _message('Chưa tải được hồ sơ. Kiểm tra kết nối rồi thử lại.');
+      }
+    }
+  }
+
+  Future<void> _setExpiry(bool enabled, bool automatic) async {
+    if (_savingExpiry) return;
+    setState(() => _savingExpiry = true);
+    final next = ExpiryPreferences(enabled: enabled, automatic: automatic);
+    try {
+      await next.save();
+      if (mounted) setState(() => expiryPrefs = next);
+    } catch (_) {
+      if (mounted) {
+        _message('Chưa lưu được cài đặt hạn dùng. Vui lòng thử lại.');
+      }
+    } finally {
+      if (mounted) setState(() => _savingExpiry = false);
+    }
+  }
+
+  Future<void> _setDiet(DietKind choice) async {
+    if (_savingDiet || diet == choice) return;
+    final previous = diet;
+    setState(() => diet = choice);
+    if (!AppServices.configured) {
+      applyPreferredDiet(choice);
+      return;
+    }
+    final userId = AppServices.client.auth.currentUser?.id;
+    if (userId == null) {
+      setState(() => diet = previous);
+      return;
+    }
+    setState(() => _savingDiet = true);
+    try {
+      await AppServices.client
+          .from('profiles')
+          .update({'diet': choice.id})
+          .eq('id', userId);
+      applyPreferredDiet(choice);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => diet = previous);
+      _message('Chưa lưu được chế độ ăn. Thử lại nhé.');
+    } finally {
+      if (mounted) setState(() => _savingDiet = false);
+    }
+  }
 
   Future<void> _editProfile() async {
-    final nameController = TextEditingController(text: name);
-    final roleController = TextEditingController(text: role);
     final result = await showDialog<_ProfileEditResult>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Chỉnh sửa hồ sơ'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(labelText: 'Tên hiển thị'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: roleController,
-              decoration: const InputDecoration(labelText: 'Vai trò'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Hủy'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(
-              dialogContext,
-              _ProfileEditResult(
-                name: nameController.text.trim(),
-                role: roleController.text.trim(),
-              ),
-            ),
-            child: const Text('Lưu'),
-          ),
-        ],
-      ),
+      builder: (_) => _ProfileEditDialog(name: name, role: role),
     );
-    nameController.dispose();
-    roleController.dispose();
+    if (mounted) setState(() {});
     if (result != null && result.name.isNotEmpty && mounted) {
+      if (AppServices.configured) {
+        final userId = AppServices.client.auth.currentUser?.id;
+        if (userId == null) return;
+        try {
+          await AppServices.client
+              .from('profiles')
+              .update({
+                'display_name': result.name,
+                'role_label': result.role.isEmpty ? role : result.role,
+              })
+              .eq('id', userId);
+        } catch (_) {
+          if (mounted) _message('Chưa lưu được hồ sơ. Thử lại nhé.');
+          return;
+        }
+      } else {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('vineat.local.profile_name', result.name);
+        } catch (_) {
+          if (mounted) _message('Chưa lưu được tên. Vui lòng thử lại.');
+          return;
+        }
+      }
+      if (!mounted) return;
       setState(() {
         name = result.name;
         role = result.role.isEmpty ? role : result.role;
       });
+      AppServices.inventoryActorName = result.name;
+      _message('Đã cập nhật tên hiển thị');
     }
   }
 
   void _message(String text) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(text, textAlign: TextAlign.center)));
   }
 
-  Future<void> _resetDemo() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Đặt lại tủ lạnh mẫu?'),
-        content: const Text(
-          'Tủ lạnh sẽ trở về dữ liệu mẫu để bạn chạy lại kịch bản trình diễn.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Hủy'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Đặt lại'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    await resetDemoInventory();
-    if (mounted) _message('Đã đặt lại tủ lạnh mẫu');
+  Future<void> _signOut() async {
+    if (_signOutBusy) return;
+    setState(() => _signOutBusy = true);
+    try {
+      if (debugOtpDemoEnabled) {
+        await AppServices.signOutDebugDemo();
+      } else {
+        await AppServices.signOut();
+      }
+      applyPreferredDiet(DietKind.normal);
+      if (mounted) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    } catch (_) {
+      if (mounted) _message('Chưa đăng xuất được. Vui lòng thử lại.');
+    } finally {
+      if (mounted) setState(() => _signOutBusy = false);
+    }
   }
 
   @override
@@ -164,14 +243,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Text(
                       name,
                       style: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 22,
                         fontWeight: FontWeight.w900,
                         color: _ink,
                       ),
                     ),
                     Text(
-                      '$role · Tham gia từ ${DateTime.now().year}',
-                      style: const TextStyle(fontSize: 11, color: _muted),
+                      AppServices.configured
+                          ? (AppServices.client.auth.currentUser?.email ?? role)
+                          : role,
+                      style: const TextStyle(fontSize: 14, color: _muted),
                     ),
                     const SizedBox(height: 4),
                     InkWell(
@@ -179,7 +260,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: const Text(
                         'Chỉnh sửa hồ sơ',
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 14,
                           fontWeight: FontWeight.w800,
                           color: _green,
                         ),
@@ -191,88 +272,77 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ],
           ),
         ),
+        if (debugOtpDemoEnabled || AppServices.configured) ...[
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _signOutBusy ? null : _signOut,
+            icon: _signOutBusy
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.logout),
+            label: Text(_signOutBusy ? 'Đang đăng xuất…' : 'Đăng xuất'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+              foregroundColor: Colors.redAccent,
+            ),
+          ),
+        ],
         const SizedBox(height: 14),
         _Panel(
           title: 'Chế độ ăn uống',
-          child: Column(
-            children:
-                const [
-                  _ProfileOption(
-                    title: 'Ăn thường',
-                    subtitle: 'Không giới hạn thực phẩm',
-                    icon: Icons.restaurant,
-                  ),
-                  _ProfileOption(
-                    title: 'Giảm cân',
-                    subtitle: 'Ưu tiên thực phẩm ít calo',
-                    icon: Icons.balance,
-                  ),
-                  _ProfileOption(
-                    title: 'Ăn chay',
-                    subtitle: 'Chỉ thực phẩm chay',
-                    icon: Icons.spa_outlined,
-                  ),
-                  _ProfileOption(
-                    title: 'Tăng cơ',
-                    subtitle: 'Ưu tiên thực phẩm giàu protein',
-                    icon: Icons.fitness_center,
-                  ),
-                  _ProfileOption(
-                    title: 'Khác',
-                    subtitle: 'Chế độ tùy chỉnh',
-                    icon: Icons.more_horiz,
-                  ),
-                ].asMap().entries.map((entry) {
-                  final item = entry.value;
-                  return _DietOption(
-                    title: item.title,
-                    subtitle: item.subtitle,
-                    icon: item.icon,
-                    selected: diet == entry.key,
-                    onTap: () => setState(() => diet = entry.key),
-                  );
-                }).toList(),
+          child: DietSelectorField(
+            value: diet,
+            enabled: !_savingDiet,
+            onChanged: _setDiet,
           ),
         ),
         const SizedBox(height: 14),
         _Panel(
-          title: 'Thông báo',
+          title: 'Hạn dùng thông minh',
           child: Column(
-            children:
-                const [
-                  _ProfileOption(
-                    title: 'Cảnh báo thực phẩm sắp hết hạn',
-                    subtitle:
-                        'Nhận thông báo khi có món sắp hết hạn trong 3 ngày tới',
-                    icon: Icons.timer_outlined,
-                  ),
-                  _ProfileOption(
-                    title: 'Dọn tủ lạnh thứ 6',
-                    subtitle: 'Popup gợi ý món ăn mỗi tối thứ 6 hàng tuần',
-                    icon: Icons.kitchen_outlined,
-                  ),
-                  _ProfileOption(
-                    title: 'Thành tựu mới',
-                    subtitle: 'Thông báo khi bạn mở khóa thành tựu mới',
-                    icon: Icons.emoji_events_outlined,
-                  ),
-                  _ProfileOption(
-                    title: 'Hoạt động gia đình',
-                    subtitle:
-                        'Khi thành viên thêm/xóa thực phẩm hoặc cập nhật danh sách đi chợ',
-                    icon: Icons.people_outline,
-                  ),
-                ].asMap().entries.map((entry) {
-                  final item = entry.value;
-                  return _NotificationOption(
-                    icon: item.icon,
-                    title: item.title,
-                    subtitle: item.subtitle,
-                    value: notifications[entry.key],
-                    onChanged: (value) =>
-                        setState(() => notifications[entry.key] = value),
-                  );
-                }).toList(),
+            children: [
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Gợi ý hạn dùng'),
+                subtitle: const Text('Tham khảo FoodSafety.gov, bảo quản ≤4°C'),
+                value: expiryPrefs.enabled,
+                onChanged: _savingExpiry
+                    ? null
+                    : (v) => _setExpiry(v, expiryPrefs.automatic),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Tự điền ngày gợi ý'),
+                subtitle: const Text(
+                  'Chỉ khi biết loại/trạng thái món và chưa chọn ngày. Luôn kiểm tra bao bì.',
+                ),
+                value: expiryPrefs.automatic,
+                onChanged: _savingExpiry || !expiryPrefs.enabled
+                    ? null
+                    : (v) => _setExpiry(true, v),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _Panel(
+          title: 'Dọn tủ lạnh',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const CircleAvatar(
+              backgroundColor: Color(0xFFE1F7ED),
+              child: Icon(Icons.kitchen_outlined, color: _green),
+            ),
+            title: const Text('Ưu tiên thực phẩm sắp hết hạn'),
+            subtitle: const Text('Xem hạn dùng và món có thể nấu'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const FridgeCleanupScreen(),
+              ),
+            ),
           ),
         ),
         const SizedBox(height: 14),
@@ -291,88 +361,96 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 14),
         _Panel(
           title: 'Về ViNeat',
-          child: Column(
-            children: [
-              const _AboutRow('Phiên bản', '1.0.0-beta'),
-              _AboutRow(
-                'Cập nhật lần cuối',
-                '${DateTime.now().day.toString().padLeft(2, '0')}/'
-                    '${DateTime.now().month.toString().padLeft(2, '0')}/'
-                    '${DateTime.now().year}',
-              ),
-              _LinkRow(
-                'Điều khoản sử dụng',
-                () => _message('Đang mở điều khoản sử dụng'),
-              ),
-              _LinkRow(
-                'Chính sách bảo mật',
-                () => _message('Đang mở chính sách bảo mật'),
-              ),
-              _LinkRow('Liên hệ hỗ trợ', () => _message('Đang mở kênh hỗ trợ')),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-        OutlinedButton.icon(
-          onPressed: _resetDemo,
-          icon: const Icon(Icons.restart_alt),
-          label: const Text('Đặt lại tủ lạnh mẫu'),
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            foregroundColor: _green,
-          ),
-        ),
-        if (AppServices.configured) ...[
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: _signOutBusy
-                ? null
-                : () async {
-                    setState(() => _signOutBusy = true);
-                    try {
-                      await AppServices.client.auth.signOut();
-                      if (mounted) {
-                        Navigator.of(
-                          this.context,
-                        ).popUntil((route) => route.isFirst);
-                      }
-                    } catch (_) {
-                      if (mounted) {
-                        _message('Chưa đăng xuất được. Vui lòng thử lại.');
-                      }
-                    } finally {
-                      if (mounted) setState(() => _signOutBusy = false);
-                    }
-                  },
-            icon: _signOutBusy
-                ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.logout),
-            label: Text(_signOutBusy ? 'Đang đăng xuất…' : 'Đăng xuất'),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              foregroundColor: Colors.redAccent,
-            ),
-          ),
-        ],
-        const SizedBox(height: 18),
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Text(
-              AppServices.configured
-                  ? 'Dữ liệu của gia đình đang chọn được đồng bộ an toàn qua Supabase.'
-                  : 'Bản demo lưu dữ liệu trên thiết bị này; chưa bật đăng nhập hoặc đồng bộ gia đình.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 11, color: _muted),
-            ),
-          ),
+          child: Column(children: [const _AboutRow('Phiên bản', '1.0.0')]),
         ),
         const SizedBox(height: 30),
       ],
     ),
+  );
+}
+
+class _ProfileEditDialog extends StatefulWidget {
+  const _ProfileEditDialog({required this.name, required this.role});
+  final String name, role;
+  @override
+  State<_ProfileEditDialog> createState() => _ProfileEditDialogState();
+}
+
+class _ProfileEditDialogState extends State<_ProfileEditDialog> {
+  late final _name = TextEditingController(text: widget.name);
+  final _form = GlobalKey<FormState>();
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Chỉnh sửa hồ sơ'),
+    content: SingleChildScrollView(
+      child: Form(
+        key: _form,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextFormField(
+              controller: _name,
+              maxLength: 60,
+              validator: (v) => (v ?? '').trim().isEmpty
+                  ? 'Vui lòng nhập tên hiển thị.'
+                  : null,
+              decoration: const InputDecoration(
+                labelText: 'Tên hiển thị',
+                prefixIcon: Icon(Icons.person_outline),
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text('Email đăng nhập', style: TextStyle(color: _muted)),
+            const SizedBox(height: 6),
+            Text(
+              AppServices.configured
+                  ? (AppServices.client.auth.currentUser?.email ??
+                        'Chưa đăng nhập')
+                  : 'Chế độ trên thiết bị',
+            ),
+            if (AppServices.configured &&
+                AppServices.client.auth.currentUser?.email != null)
+              TextButton.icon(
+                onPressed: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const ProfileEmailScreen(),
+                    ),
+                  );
+                  if (mounted) setState(() {});
+                },
+                icon: const Icon(Icons.verified_user_outlined),
+                label: const Text('Đổi email có xác nhận'),
+              ),
+          ],
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Hủy'),
+      ),
+      FilledButton(
+        onPressed: () {
+          if (_form.currentState!.validate()) {
+            Navigator.pop(
+              context,
+              _ProfileEditResult(name: _name.text.trim(), role: widget.role),
+            );
+          }
+        },
+        child: const Text('Lưu'),
+      ),
+    ],
   );
 }
 
@@ -386,7 +464,7 @@ class _Panel extends StatelessWidget {
     color: Colors.white,
     elevation: 0,
     shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(20),
       side: const BorderSide(color: Color(0xFFEEF0F3)),
     ),
     child: Padding(
@@ -397,7 +475,7 @@ class _Panel extends StatelessWidget {
           Text(
             title,
             style: const TextStyle(
-              fontSize: 14,
+              fontSize: 18,
               fontWeight: FontWeight.w900,
               color: _ink,
             ),
@@ -410,131 +488,6 @@ class _Panel extends StatelessWidget {
   );
 }
 
-class _DietOption extends StatelessWidget {
-  const _DietOption({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-  final String title, subtitle;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 8),
-    child: InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: selected ? const Color(0xFFE9FBF4) : const Color(0xFFF7F8FA),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: selected ? const Color(0xFF9DEACD) : const Color(0xFFEEF0F3),
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: selected
-                    ? const Color(0xFFCCF7E3)
-                    : const Color(0xFFE7EAF0),
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: Icon(
-                icon,
-                size: 19,
-                color: selected ? _green : const Color(0xFF7E899A),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: selected ? _green : _ink,
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(fontSize: 10, color: _muted),
-                  ),
-                ],
-              ),
-            ),
-            if (selected)
-              const Icon(
-                Icons.check_circle,
-                size: 17,
-                color: Color(0xFF19BB85),
-              ),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
-class _NotificationOption extends StatelessWidget {
-  const _NotificationOption({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.value,
-    required this.onChanged,
-  });
-  final IconData icon;
-  final String title, subtitle;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 12),
-    child: Row(
-      children: [
-        Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF0F2F5),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, color: const Color(0xFF7E899A), size: 18),
-        ),
-        const SizedBox(width: 11),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(fontSize: 12, color: _ink)),
-              Text(
-                subtitle,
-                style: const TextStyle(fontSize: 10, color: _muted),
-              ),
-            ],
-          ),
-        ),
-        Switch(
-          value: value,
-          activeTrackColor: const Color(0xFF18BD87),
-          onChanged: onChanged,
-        ),
-      ],
-    ),
-  );
-}
-
 class _AboutRow extends StatelessWidget {
   const _AboutRow(this.label, this.value);
   final String label, value;
@@ -543,8 +496,9 @@ class _AboutRow extends StatelessWidget {
     padding: const EdgeInsets.symmetric(vertical: 10),
     child: Row(
       children: [
-        Text(label, style: const TextStyle(color: Color(0xFF667085))),
-        const Spacer(),
+        Expanded(
+          child: Text(label, style: const TextStyle(color: Color(0xFF667085))),
+        ),
         Text(value, style: const TextStyle(color: _muted)),
       ],
     ),
@@ -562,8 +516,12 @@ class _LinkRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
         children: [
-          Text(label, style: const TextStyle(color: Color(0xFF667085))),
-          const Spacer(),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(color: Color(0xFF667085)),
+            ),
+          ),
           const Icon(Icons.chevron_right, color: _muted, size: 18),
         ],
       ),

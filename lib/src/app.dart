@@ -10,6 +10,8 @@ import 'auth_screens.dart';
 import 'household_data_repository.dart';
 import 'inventory_store.dart';
 import 'screens.dart';
+import 'usage_screen.dart';
+import 'menu_ingredients.dart';
 
 final RouteObserver<ModalRoute<dynamic>> appRouteObserver =
     RouteObserver<ModalRoute<dynamic>>();
@@ -87,38 +89,130 @@ class _PageTip {
 
 class _AppShellState extends State<AppShell>
     with SingleTickerProviderStateMixin, RouteAware {
-  static const _pageKeys = ['home', 'scan', 'recipes', 'shopping', 'reports'];
-  static const _pageTips = <_PageTip>[
-    _PageTip(
-      title: 'Mẹo tủ lạnh',
-      description:
-          'Thêm thực phẩm, theo dõi hạn dùng và mở một món để sửa hoặc ghi nhận đã dùng.',
-    ),
-    _PageTip(
-      title: 'Mẹo quét hóa đơn',
-      description:
-          'Chụp hoặc chọn hóa đơn, rà lại từng dòng rồi mới xác nhận nhập vào tủ.',
-    ),
-    _PageTip(
-      title: 'Mẹo gợi ý món ăn',
-      description:
-          'Tìm món theo nguyên liệu đang có; mở công thức để xem phần còn thiếu.',
-    ),
-    _PageTip(
-      title: 'Mẹo đi chợ',
-      description:
-          'Thêm món cần mua. Đánh dấu đã mua để chuyển món vào tủ lạnh.',
-    ),
-    _PageTip(
-      title: 'Mẹo báo cáo',
-      description:
-          'Số liệu phản ánh các lần thêm, dùng và bỏ thực phẩm đã xác nhận.',
-    ),
+  static const _pageKeys = [
+    'home',
+    'scan',
+    'recipes',
+    'shopping',
+    'reports',
+    'usage',
+  ];
+  static const _navigationPages = [0, 1, 5, 2, 3, 4];
+  static const _pageTips = <List<_PageTip>>[
+    [
+      _PageTip(
+        title: 'Tủ lạnh gia đình',
+        description:
+            'Chạm hình tủ lạnh hoặc Tổng số món để mở trang đầy đủ thực phẩm. Trang chủ hiển thị tối đa 10 món; Xem tất cả mở danh sách có tìm kiếm.',
+      ),
+      _PageTip(
+        title: 'Các chỉ số',
+        description:
+            'Ba trạng thái bên dưới cho biết món còn tươi, sắp hết hạn và đã hết hạn. Chạm ô hạn dùng để xem món cần ưu tiên.',
+      ),
+      _PageTip(
+        title: 'Cảnh báo hạn dùng',
+        description:
+            'Vuốt hàng cảnh báo sang trái hoặc phải để xem đầy đủ món cần ưu tiên. Chạm món trong danh sách bên dưới để sửa, dùng hoặc bỏ.',
+      ),
+      _PageTip(
+        title: 'Thêm thực phẩm',
+        description:
+            'Nút Thêm món cho chọn Scan, AI, Template hoặc Thủ công. Rà soát thông tin trước khi thêm thực phẩm vào tủ lạnh gia đình.',
+      ),
+    ],
+    [
+      _PageTip(
+        title: 'Chọn cách nhập hóa đơn',
+        description:
+            'Chụp hoặc chọn ảnh hóa đơn. Bạn cũng có thể thử mẫu hoặc nhập thủ công.',
+      ),
+      _PageTip(
+        title: 'Xem lại trước khi lưu',
+        description:
+            'Sau khi quét, kiểm tra tên, số lượng và giá của từng dòng. Chỉ xác nhận những món đúng.',
+      ),
+      _PageTip(
+        title: 'Thực phẩm được đồng bộ',
+        description:
+            'Các món đã xác nhận sẽ xuất hiện trong tủ lạnh chung của gia đình.',
+      ),
+    ],
+    [
+      _PageTip(
+        title: 'Tìm công thức',
+        description:
+            'Nhập tên món hoặc nguyên liệu. Gợi ý sẽ ưu tiên thực phẩm đang có trong tủ.',
+      ),
+      _PageTip(
+        title: 'Chế độ ăn cá nhân',
+        description:
+            'Món phù hợp với chế độ ăn trong Hồ sơ được lọc riêng cho bạn; tủ lạnh vẫn dùng chung với gia đình.',
+      ),
+      _PageTip(
+        title: 'Bộ lọc và cách nấu',
+        description:
+            'Chọn bữa hoặc mùa, rồi mở thẻ món để xem nguyên liệu và từng bước thực hiện.',
+      ),
+    ],
+    [
+      _PageTip(
+        title: 'Thêm món cần mua',
+        description:
+            'Thêm thực phẩm vào danh sách đi chợ dùng chung với gia đình.',
+      ),
+      _PageTip(
+        title: 'Lọc danh sách',
+        description:
+            'Chọn nhóm rau củ, thịt cá hoặc đồ khô để tìm món nhanh hơn.',
+      ),
+      _PageTip(
+        title: 'Đánh dấu đã mua',
+        description:
+            'Chạm ô chọn của từng món khi mua xong để cập nhật danh sách và chuyển vào tủ.',
+      ),
+    ],
+    [
+      _PageTip(
+        title: 'Giá trị tủ lạnh',
+        description:
+            'Tổng giá trị được tính từ những giá bạn đã nhập; giá chưa biết không được tự đoán.',
+      ),
+      _PageTip(
+        title: 'Hoạt động tháng này',
+        description:
+            'Các ô bên dưới ghi số lần sử dụng, bỏ thực phẩm và bữa đã nấu trong tháng hiện tại.',
+      ),
+      _PageTip(
+        title: 'Đọc chi tiết báo cáo',
+        description:
+            'Cuộn xuống để xem lịch sử. Báo cáo chỉ thay đổi theo thao tác đã xác nhận.',
+      ),
+    ],
+    [
+      _PageTip(
+        title: 'Xuất nguyên liệu',
+        description:
+            'Theo món ăn sẽ gợi ý lượng đã dùng; Thủ công cho chọn từng lô. AI chưa hỗ trợ. Chỉ xác nhận sử dụng mới trừ tồn.',
+      ),
+      _PageTip(
+        title: 'Dùng theo thực đơn',
+        description:
+            'Chọn ngày, số người đã ăn và món đã nấu. Kiểm tra hoặc sửa lượng thực tế trước khi xuất.',
+      ),
+      _PageTip(
+        title: 'Lịch sử sử dụng',
+        description:
+            'Mỗi lần xuất có tên người sử dụng, thời gian, nguyên liệu và món ăn để gia đình đối chiếu.',
+      ),
+    ],
   ];
   int _index = 0;
   int _transitionDirection = 1;
   final Set<int> _visitedTabs = {0};
   bool _showPageTip = false;
+  int _tipStep = 0;
+  bool _replayingTutorial = false;
   late final AnimationController _tabTransition;
   ModalRoute<dynamic>? _route;
 
@@ -128,6 +222,7 @@ class _AppShellState extends State<AppShell>
     RecipesScreen(),
     ShoppingScreen(),
     ReportsScreen(),
+    UsageScreen(catalog: [...recipeCatalog, ...menuSupportingRecipes]),
   ];
 
   @override
@@ -140,6 +235,7 @@ class _AppShellState extends State<AppShell>
     );
     activeAppTabIndex.value = 0;
     tutorialPageRequest.addListener(_handleTutorialRequest);
+    replayAppTutorialRequest.addListener(_replayTutorial);
     HouseholdService.instance.active.addListener(_handleActiveHouseholdChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _handleActiveHouseholdChanged();
@@ -168,6 +264,52 @@ class _AppShellState extends State<AppShell>
     if (requested == null) return;
     _selectTab(requested);
     tutorialPageRequest.value = null;
+  }
+
+  void _replayTutorial() {
+    setState(() {
+      _replayingTutorial = true;
+      _tipStep = 0;
+      _showPageTip = true;
+    });
+    if (_index != 0) _selectTab(0);
+    _focusTipTarget();
+  }
+
+  GlobalKey _tipTarget(int page, int step) {
+    if (page == 0) {
+      return step == 3 ? tutorialTargetKeys[0] : tutorialSectionKeys[0][step];
+    }
+    return step == 0
+        ? tutorialTargetKeys[page]
+        : tutorialSectionKeys[page][step - 1];
+  }
+
+  void _focusTipTarget() {
+    final page = _index;
+    final step = _tipStep;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_showPageTip || _index != page || _tipStep != step) {
+        return;
+      }
+      final target = _tipTarget(page, step).currentContext;
+      if (target != null) {
+        // The scrim is a sibling of the scroll view. An animated scroll would
+        // leave its cut-out at the old coordinates while the content moves.
+        Scrollable.ensureVisible(
+          target,
+          duration: Duration.zero,
+          alignment: .24,
+        );
+      }
+      // The first frame can precede the target's layout (or a scroll jump).
+      // Recompute the cut-out once the target has its final screen position.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _showPageTip && _index == page && _tipStep == step) {
+          setState(() {});
+        }
+      });
+    });
   }
 
   void _handleActiveHouseholdChanged() {
@@ -207,10 +349,10 @@ class _AppShellState extends State<AppShell>
     );
     final preferences = await SharedPreferences.getInstance();
     var seen = preferences.getBool(preferenceKey) ?? false;
-    if (!seen && AppServices.configured) {
+    if (!seen && !_replayingTutorial && AppServices.configured) {
       try {
         seen = await HouseholdDataRepository.instance.isTutorialPageCompleted(
-          _pageKeys[index],
+          '${_pageKeys[index]}_v4',
         );
         if (seen) {
           await preferences.setBool(preferenceKey, true);
@@ -219,8 +361,12 @@ class _AppShellState extends State<AppShell>
         // Keep first-use help available even when the network is offline.
       }
     }
-    if (mounted && _index == index && !seen) {
-      setState(() => _showPageTip = true);
+    if (mounted && _index == index && (!seen || _replayingTutorial)) {
+      setState(() {
+        _tipStep = 0;
+        _showPageTip = true;
+      });
+      _focusTipTarget();
     }
   }
 
@@ -238,7 +384,7 @@ class _AppShellState extends State<AppShell>
     if (AppServices.configured) {
       unawaited(
         HouseholdDataRepository.instance
-            .markTutorialPageCompleted(_pageKeys[pageIndex])
+            .markTutorialPageCompleted('${_pageKeys[pageIndex]}_v4')
             .catchError((_) {}),
       );
     }
@@ -246,9 +392,46 @@ class _AppShellState extends State<AppShell>
   }
 
   Future<void> _advancePageTip() async {
-    final next = _index + 1;
+    if (_tipStep + 1 < _pageTips[_index].length) {
+      setState(() => _tipStep++);
+      _focusTipTarget();
+      return;
+    }
+    final next = _navigationPages.indexOf(_index) + 1;
     await _dismissPageTip();
-    if (mounted && next < _pages.length) _selectTab(next);
+    if (!mounted) return;
+    if (next < _pages.length) {
+      _selectTab(_navigationPages[next]);
+    } else {
+      _replayingTutorial = false;
+      _selectTab(0);
+    }
+  }
+
+  Future<void> _skipTutorial() async {
+    if (mounted) {
+      setState(() {
+        _showPageTip = false;
+        _replayingTutorial = false;
+      });
+    }
+    final preferences = await SharedPreferences.getInstance();
+    final userId = AppServices.configured
+        ? AppServices.client.auth.currentUser?.id ?? 'signed-out'
+        : 'local';
+    for (final page in _pageKeys) {
+      await preferences.setBool(
+        pageTutorialPreferenceKey(userId: userId, pageKey: page),
+        true,
+      );
+      if (AppServices.configured) {
+        unawaited(
+          HouseholdDataRepository.instance
+              .markTutorialPageCompleted('${page}_v4')
+              .catchError((_) {}),
+        );
+      }
+    }
   }
 
   @override
@@ -267,6 +450,7 @@ class _AppShellState extends State<AppShell>
     }
     if (activeAppTabIndex.value == _index) activeAppTabIndex.value = -1;
     tutorialPageRequest.removeListener(_handleTutorialRequest);
+    replayAppTutorialRequest.removeListener(_replayTutorial);
     _tabTransition.dispose();
     super.dispose();
   }
@@ -278,6 +462,7 @@ class _AppShellState extends State<AppShell>
       _index = value;
       _visitedTabs.add(value);
       _showPageTip = false;
+      _tipStep = 0;
     });
     activeAppTabIndex.value = value;
     _showTipIfNeeded(value);
@@ -333,6 +518,21 @@ class _AppShellState extends State<AppShell>
                                     style: const TextStyle(fontSize: 11),
                                   ),
                                 ),
+                                if (!status.startsWith('Đang'))
+                                  TextButton(
+                                    onPressed: () async {
+                                      try {
+                                        await retryPendingInventoryAdds();
+                                      } catch (_) {
+                                        HouseholdDataRepository
+                                                .instance
+                                                .syncStatus
+                                                .value =
+                                            'Chưa tải lại được dữ liệu. Vui lòng thử lại.';
+                                      }
+                                    },
+                                    child: const Text('Thử lại'),
+                                  ),
                                 IconButton(
                                   tooltip: 'Ẩn thông báo',
                                   visualDensity: VisualDensity.compact,
@@ -349,42 +549,15 @@ class _AppShellState extends State<AppShell>
                           ),
                         ),
                 ),
-                if (!AppServices.configured)
-                  Material(
-                    color: const Color(0xFFEAF5FF),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 7, 14, 7),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.info_outline,
-                            size: 17,
-                            color: Color(0xFF366A91),
-                          ),
-                          const SizedBox(width: 8),
-                          const Expanded(
-                            child: Text(
-                              'Demo ngoại tuyến · dữ liệu mẫu chỉ lưu trên thiết bị, chưa đồng bộ gia đình.',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Color(0xFF345B78),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
                 Expanded(
                   child: Row(
                     key: const ValueKey('app-body-row'),
                     children: [
                       if (useRail)
                         NavigationRail(
-                          selectedIndex: _index,
-                          onDestinationSelected: _selectTab,
+                          selectedIndex: _navigationPages.indexOf(_index),
+                          onDestinationSelected: (value) =>
+                              _selectTab(_navigationPages[value]),
                           labelType: NavigationRailLabelType.all,
                           backgroundColor: Colors.white,
                           indicatorColor: const Color(0xFFE7F8F1),
@@ -396,7 +569,11 @@ class _AppShellState extends State<AppShell>
                             ),
                             NavigationRailDestination(
                               icon: Icon(Icons.document_scanner_outlined),
-                              label: Text('Scan'),
+                              label: Text('Nhập'),
+                            ),
+                            NavigationRailDestination(
+                              icon: Icon(Icons.outbox_outlined),
+                              label: Text('Xuất'),
                             ),
                             NavigationRailDestination(
                               icon: Icon(Icons.restaurant_menu),
@@ -449,17 +626,29 @@ class _AppShellState extends State<AppShell>
               ],
             ),
           ),
+          floatingActionButton: _index == 0
+              ? FloatingActionButton.extended(
+                  key: tutorialTargetKeys[0],
+                  heroTag: 'vineat-home-add-food',
+                  onPressed: () => homeAddFoodRequest.value++,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Thêm món'),
+                  tooltip: 'Thêm thực phẩm vào tủ lạnh',
+                )
+              : null,
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
           bottomNavigationBar: useRail
               ? null
               : NavigationBar(
                   height: compactNavigationLabels ? 80 : 68,
-                  selectedIndex: _index,
+                  selectedIndex: _navigationPages.indexOf(_index),
                   backgroundColor: Colors.white,
                   indicatorColor: const Color(0xFFE7F8F1),
                   labelBehavior: compactNavigationLabels
                       ? NavigationDestinationLabelBehavior.onlyShowSelected
                       : NavigationDestinationLabelBehavior.alwaysShow,
-                  onDestinationSelected: _selectTab,
+                  onDestinationSelected: (value) =>
+                      _selectTab(_navigationPages[value]),
                   destinations: const [
                     NavigationDestination(
                       icon: Icon(Icons.home_outlined),
@@ -468,7 +657,11 @@ class _AppShellState extends State<AppShell>
                     ),
                     NavigationDestination(
                       icon: Icon(Icons.document_scanner_outlined),
-                      label: 'Scan',
+                      label: 'Nhập',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.outbox_outlined),
+                      label: 'Xuất',
                     ),
                     NavigationDestination(
                       icon: Icon(Icons.restaurant_menu),
@@ -488,13 +681,24 @@ class _AppShellState extends State<AppShell>
         if (_showPageTip)
           Positioned.fill(
             child: AnchoredTutorialCoachmark(
-              targetKey: tutorialTargetKeys[_index],
-              title: _pageTips[_index].title,
-              description: _pageTips[_index].description,
-              step: _index + 1,
-              totalSteps: _pages.length,
+              targetKey: _tipTarget(_index, _tipStep),
+              title: _pageTips[_index][_tipStep].title,
+              description: _pageTips[_index][_tipStep].description,
+              step:
+                  _navigationPages
+                      .take(_navigationPages.indexOf(_index))
+                      .fold<int>(
+                        0,
+                        (sum, page) => sum + _pageTips[page].length,
+                      ) +
+                  _tipStep +
+                  1,
+              totalSteps: _pageTips.fold<int>(
+                0,
+                (sum, steps) => sum + steps.length,
+              ),
               onNext: _advancePageTip,
-              onSkip: _dismissPageTip,
+              onSkip: _skipTutorial,
             ),
           ),
       ],

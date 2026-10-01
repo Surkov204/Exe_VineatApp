@@ -5,18 +5,35 @@ final tutorialPageRequest = ValueNotifier<int?>(null);
 
 /// Real, visible controls that the first-use coachmark points to.
 final tutorialTargetKeys = List<GlobalKey>.generate(
-  5,
+  6,
   (index) => GlobalKey(debugLabel: 'vineat-tutorial-target-$index'),
   growable: false,
 );
 
+/// Stable anchors for the individual controls/sections on every tab.
+final tutorialSectionKeys = List<List<GlobalKey>>.generate(
+  6,
+  (page) => List<GlobalKey>.generate(
+    3,
+    (section) => GlobalKey(debugLabel: 'vineat-tour-$page-$section'),
+    growable: false,
+  ),
+  growable: false,
+);
+
+/// The home header can restart the guided tour without signing out.
+final replayAppTutorialRequest = ValueNotifier<int>(0);
+
 /// The selected page is also used to pause embedded platform views off-screen.
 final activeAppTabIndex = ValueNotifier<int>(-1);
+
+/// Requests a home-page add action from the shell-level floating toolbar button.
+final homeAddFoodRequest = ValueNotifier<int>(0);
 
 String pageTutorialPreferenceKey({
   required String userId,
   required String pageKey,
-}) => 'vineat_page_tutorial_${userId}_${pageKey}_v3';
+}) => 'vineat_page_tutorial_${userId}_${pageKey}_v4';
 
 const _tutorialPages = <_TutorialPage>[
   _TutorialPage(
@@ -26,7 +43,7 @@ const _tutorialPages = <_TutorialPage>[
     icon: Icons.kitchen_outlined,
   ),
   _TutorialPage(
-    title: 'Scan hóa đơn',
+    title: 'Nhập thực phẩm',
     description:
         'Chụp/chọn ảnh hóa đơn, kiểm tra kết quả nhận dạng rồi bỏ chọn hoặc sửa dòng chưa chính xác trước khi nhập vào tủ.',
     icon: Icons.document_scanner_outlined,
@@ -49,6 +66,12 @@ const _tutorialPages = <_TutorialPage>[
         'Xem giá trị tủ hiện tại và lịch sử từ thao tác đã ghi nhận; các chỉ số ước tính được ghi rõ để bạn dễ đối chiếu.',
     icon: Icons.bar_chart_rounded,
   ),
+  _TutorialPage(
+    title: 'Xuất nguyên liệu',
+    description:
+        'Ghi lượng đã dùng theo món hoặc thủ công. Chỉ xác nhận xuất mới trừ tồn; lập thực đơn và đi chợ không trừ tồn.',
+    icon: Icons.outbox_outlined,
+  ),
 ];
 
 Future<void> showAppTutorial(
@@ -63,7 +86,7 @@ Future<void> showAppTutorial(
   );
 }
 
-class AnchoredTutorialCoachmark extends StatelessWidget {
+class AnchoredTutorialCoachmark extends StatefulWidget {
   const AnchoredTutorialCoachmark({
     super.key,
     required this.targetKey,
@@ -83,8 +106,40 @@ class AnchoredTutorialCoachmark extends StatelessWidget {
   final VoidCallback onNext;
   final VoidCallback onSkip;
 
-  Rect? _targetRect(BuildContext context) {
-    final targetContext = targetKey.currentContext;
+  @override
+  State<AnchoredTutorialCoachmark> createState() =>
+      _AnchoredTutorialCoachmarkState();
+}
+
+class _AnchoredTutorialCoachmarkState extends State<AnchoredTutorialCoachmark> {
+  Rect? _target;
+
+  @override
+  void initState() {
+    super.initState();
+    _measureAfterLayout();
+  }
+
+  @override
+  void didUpdateWidget(covariant AnchoredTutorialCoachmark oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.targetKey != widget.targetKey ||
+        oldWidget.step != widget.step) {
+      _target = null;
+    }
+    _measureAfterLayout();
+  }
+
+  void _measureAfterLayout() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final measured = _targetRect();
+      if (_target != measured) setState(() => _target = measured);
+    });
+  }
+
+  Rect? _targetRect() {
+    final targetContext = widget.targetKey.currentContext;
     final targetObject = targetContext?.findRenderObject();
     final overlayObject = context.findRenderObject();
     if (targetObject is! RenderBox ||
@@ -103,7 +158,7 @@ class AnchoredTutorialCoachmark extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
-      final target = _targetRect(context);
+      final target = _target;
       final media = MediaQuery.of(context);
       return Stack(
         fit: StackFit.expand,
@@ -117,10 +172,19 @@ class AnchoredTutorialCoachmark extends StatelessWidget {
             ),
           ),
           if (target != null)
-            IgnorePointer(
-              child: CustomPaint(
-                painter: _CoachmarkOutlinePainter(target),
-                child: const SizedBox.expand(),
+            Positioned.fromRect(
+              rect: target.inflate(7),
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  key: const ValueKey('tutorial-highlight-outline'),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: const Color(0xFF38D39F),
+                      width: 2,
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                ),
               ),
             ),
           CustomSingleChildLayout(
@@ -130,12 +194,12 @@ class AnchoredTutorialCoachmark extends StatelessWidget {
               safeBottom: media.padding.bottom + 12,
             ),
             child: _CoachmarkCard(
-              title: title,
-              description: description,
-              step: step,
-              totalSteps: totalSteps,
-              onNext: onNext,
-              onSkip: onSkip,
+              title: widget.title,
+              description: widget.description,
+              step: widget.step,
+              totalSteps: widget.totalSteps,
+              onNext: widget.onNext,
+              onSkip: widget.onSkip,
             ),
           ),
         ],
@@ -292,24 +356,6 @@ class _CoachmarkScrimPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _CoachmarkScrimPainter oldDelegate) =>
-      oldDelegate.target != target;
-}
-
-class _CoachmarkOutlinePainter extends CustomPainter {
-  const _CoachmarkOutlinePainter(this.target);
-  final Rect target;
-
-  @override
-  void paint(Canvas canvas, Size size) => canvas.drawRRect(
-    RRect.fromRectAndRadius(target.inflate(7), const Radius.circular(18)),
-    Paint()
-      ..color = const Color(0xFF38D39F)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2,
-  );
-
-  @override
-  bool shouldRepaint(covariant _CoachmarkOutlinePainter oldDelegate) =>
       oldDelegate.target != target;
 }
 

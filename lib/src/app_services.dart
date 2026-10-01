@@ -2,11 +2,36 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
+// Both values identify the public hosted project; neither grants privileged
+// database access. Dart defines can still override them for another project.
+const _supabaseUrl = String.fromEnvironment(
+  'SUPABASE_URL',
+  defaultValue: 'https://kumtkpsgthcxnovbjzjv.supabase.co',
+);
 const _supabasePublicKey = String.fromEnvironment(
   'SUPABASE_PUBLISHABLE_KEY',
-  defaultValue: String.fromEnvironment('SUPABASE_ANON_KEY'),
+  defaultValue: String.fromEnvironment(
+    'SUPABASE_ANON_KEY',
+    defaultValue: 'sb_publishable_oEFSiw1QilTgiJUcosUQug__5lTni9Q',
+  ),
 );
+const debugDemoAuthRequested = bool.fromEnvironment('VINEAT_DEBUG_DEMO_AUTH');
+const debugDemoEmail = String.fromEnvironment(
+  'VINEAT_DEBUG_DEMO_EMAIL',
+  defaultValue: 'demo@vineat.test',
+);
+const debugDemoOtp = String.fromEnvironment(
+  'VINEAT_DEBUG_DEMO_OTP',
+  defaultValue: '123456',
+);
+const _debugDemoSessionKey = 'vineat.debug_auth_session.v1';
+final debugDemoAuthenticated = ValueNotifier<bool>(false);
+
+bool get debugOtpDemoEnabled =>
+    kDebugMode &&
+    debugDemoAuthRequested &&
+    debugDemoEmail.contains('@') &&
+    RegExp(r'^\d{6}$').hasMatch(debugDemoOtp);
 const debugOAuthRedirect =
     'com.vineat.team.vineat_app.preview://login-callback';
 const profileOAuthRedirect =
@@ -23,6 +48,8 @@ const appOAuthRedirect = String.fromEnvironment(
 );
 
 class AppServices {
+  static String inventoryActorName = 'Bạn';
+  static String? inventoryActorUserId;
   AppServices._();
 
   static bool initialized = false;
@@ -39,6 +66,18 @@ class AppServices {
   static Future<void> initialize() async {
     if (initialized) return;
     initialized = true;
+    // The fixed OTP is an explicitly opted-in, offline-only debug fixture.
+    // Never initialize cloud services or use this path in profile/release.
+    if (debugOtpDemoEnabled) {
+      try {
+        final preferences = await SharedPreferences.getInstance();
+        debugDemoAuthenticated.value =
+            preferences.getBool(_debugDemoSessionKey) ?? false;
+      } catch (_) {
+        debugDemoAuthenticated.value = false;
+      }
+      return;
+    }
     final parsedUrl = Uri.tryParse(_supabaseUrl);
     final secureHostedUrl =
         parsedUrl?.scheme == 'https' && parsedUrl?.host.isNotEmpty == true;
@@ -64,6 +103,28 @@ class AppServices {
     } catch (error) {
       configured = false;
       initializationError = error.toString();
+    }
+  }
+
+  static Future<void> signInDebugDemo() async {
+    if (!debugOtpDemoEnabled) return;
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(_debugDemoSessionKey, true);
+    debugDemoAuthenticated.value = true;
+  }
+
+  static Future<void> signOutDebugDemo() async {
+    if (!debugOtpDemoEnabled) return;
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.remove(_debugDemoSessionKey);
+    debugDemoAuthenticated.value = false;
+  }
+
+  static Future<void> signOut() async {
+    final userId = client.auth.currentUser?.id;
+    await client.auth.signOut();
+    if (userId != null) {
+      await HouseholdService.instance.clearSelectionForUser(userId);
     }
   }
 }
@@ -101,13 +162,39 @@ class HouseholdMember {
   final String role;
 }
 
+/// The selected family is a device preference, scoped to one signed-in user.
+/// An absent or stale choice always returns to the family picker.
+class HouseholdSelectionStore {
+  static String keyFor(String userId) => 'vineat.active_household.v2.$userId';
+
+  static Future<String?> read(String userId) async {
+    final preferences = await SharedPreferences.getInstance();
+    return preferences.getString(keyFor(userId));
+  }
+
+  static Future<void> save(String userId, String householdId) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(keyFor(userId), householdId);
+  }
+
+  static Future<void> clear(String userId) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.remove(keyFor(userId));
+  }
+
+  static Household? match(String? savedId, List<Household> households) {
+    for (final household in households) {
+      if (household.id == savedId) return household;
+    }
+    return null;
+  }
+}
+
 /// Households are fetched from membership rows; the active household is a
 /// device preference, while all household data remains protected by RLS.
 class HouseholdService {
   HouseholdService._();
   static final HouseholdService instance = HouseholdService._();
-  static const _activeHouseholdKey = 'vineat.active_household.v1';
-
   final active = ValueNotifier<Household?>(null);
 
   Future<List<Household>> listMine() async {
@@ -138,24 +225,35 @@ class HouseholdService {
   }
 
   Future<List<Household>> restoreActive() async {
+    final userId = AppServices.client.auth.currentUser?.id;
+    if (userId == null) {
+      active.value = null;
+      return const [];
+    }
     final households = await listMine();
-    final preferences = await SharedPreferences.getInstance();
-    final savedId = preferences.getString(_activeHouseholdKey);
-    final selected =
-        households.where((h) => h.id == savedId).firstOrNull ??
-        (households.isEmpty ? null : households.first);
-    await select(selected);
+    final savedId = await HouseholdSelectionStore.read(userId);
+    final selected = HouseholdSelectionStore.match(savedId, households);
+    active.value = selected;
+    if (savedId != null && selected == null) {
+      await HouseholdSelectionStore.clear(userId);
+    }
     return households;
   }
 
   Future<void> select(Household? household) async {
-    active.value = household;
-    final preferences = await SharedPreferences.getInstance();
+    final userId = AppServices.client.auth.currentUser?.id;
+    if (userId == null) throw StateError('No authenticated user.');
     if (household == null) {
-      await preferences.remove(_activeHouseholdKey);
+      await HouseholdSelectionStore.clear(userId);
     } else {
-      await preferences.setString(_activeHouseholdKey, household.id);
+      await HouseholdSelectionStore.save(userId, household.id);
     }
+    active.value = household;
+  }
+
+  Future<void> clearSelectionForUser(String userId) async {
+    await HouseholdSelectionStore.clear(userId);
+    active.value = null;
   }
 
   Future<Household> create(String name) async {
@@ -235,8 +333,4 @@ class HouseholdService {
     if (body is! Map) throw StateError('Phản hồi máy chủ không hợp lệ.');
     return Map<String, dynamic>.from(body);
   }
-}
-
-extension _FirstOrNull<T> on Iterable<T> {
-  T? get firstOrNull => isEmpty ? null : first;
 }

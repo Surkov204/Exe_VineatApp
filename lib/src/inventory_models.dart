@@ -4,6 +4,9 @@ class ShoppingSummary {
   ShoppingSummary({
     String? id,
     this.householdId,
+    this.menuPlanId,
+    this.neededDate,
+    this.menuDay,
     required this.name,
     required this.quantity,
     required this.unit,
@@ -15,6 +18,9 @@ class ShoppingSummary {
 
   final String id;
   final String? householdId;
+  final String? menuPlanId;
+  final DateTime? neededDate;
+  final DateTime? menuDay;
   final String name;
   final double quantity;
   final String unit;
@@ -29,6 +35,9 @@ class ShoppingSummary {
   ShoppingSummary copyWith({
     String? id,
     String? householdId,
+    String? menuPlanId,
+    DateTime? neededDate,
+    DateTime? menuDay,
     String? name,
     double? quantity,
     String? unit,
@@ -39,6 +48,9 @@ class ShoppingSummary {
   }) => ShoppingSummary(
     id: id ?? this.id,
     householdId: householdId ?? this.householdId,
+    menuPlanId: menuPlanId ?? this.menuPlanId,
+    neededDate: neededDate ?? this.neededDate,
+    menuDay: menuDay ?? this.menuDay,
     name: name ?? this.name,
     quantity: quantity ?? this.quantity,
     unit: unit ?? this.unit,
@@ -51,6 +63,9 @@ class ShoppingSummary {
   Map<String, Object?> toJson() => {
     'id': id,
     'household_id': householdId,
+    'menu_plan_id': menuPlanId,
+    'needed_date': neededDate?.toIso8601String(),
+    'menu_day': menuDay?.toIso8601String(),
     'name': name,
     'quantity': quantity,
     'unit': unit,
@@ -74,6 +89,9 @@ class ShoppingSummary {
     return ShoppingSummary(
       id: value['id'] as String?,
       householdId: value['household_id'] as String?,
+      menuPlanId: value['menu_plan_id'] as String?,
+      neededDate: DateTime.tryParse(value['needed_date'] as String? ?? ''),
+      menuDay: DateTime.tryParse(value['menu_day'] as String? ?? ''),
       name: value['name'] as String? ?? 'Thực phẩm',
       quantity: quantity,
       unit: value['unit'] as String? ?? legacyAmount.unit,
@@ -87,10 +105,33 @@ class ShoppingSummary {
 }
 
 String shoppingIdentity(ShoppingSummary item) =>
-    '${item.name.trim().toLowerCase()}|${item.category.trim().toLowerCase()}';
+    '${item.name.trim().toLowerCase()}|${item.category.trim().toLowerCase()}${item.menuPlanId == null ? '' : '|menu:${item.menuPlanId}:${item.menuDay?.toIso8601String() ?? ''}'}';
 
 /// Inventory data has a stable identity and typed quantities. The display
 /// labels are named getters so UI code never depends on tuple positions.
+class InventoryAudit {
+  const InventoryAudit({
+    this.purchaseDate,
+    this.addedBy = '',
+    this.updatedBy = '',
+    this.updatedAt,
+  });
+  final DateTime? purchaseDate, updatedAt;
+  final String addedBy, updatedBy;
+  Map<String, Object?> toJson() => {
+    'purchase_date': purchaseDate?.toIso8601String(),
+    'added_by': addedBy,
+    'updated_by': updatedBy,
+    'updated_at': updatedAt?.toIso8601String(),
+  };
+  factory InventoryAudit.fromJson(Map value) => InventoryAudit(
+    purchaseDate: DateTime.tryParse(value['purchase_date'] as String? ?? ''),
+    addedBy: value['added_by'] as String? ?? '',
+    updatedBy: value['updated_by'] as String? ?? '',
+    updatedAt: DateTime.tryParse(value['updated_at'] as String? ?? ''),
+  );
+}
+
 class FoodSummary {
   FoodSummary({
     String? id,
@@ -103,6 +144,7 @@ class FoodSummary {
     this.expiry,
     this.imagePath,
     this.note = '',
+    this.audit = const InventoryAudit(),
   }) : id = id ?? newLocalId();
 
   final String id;
@@ -115,6 +157,7 @@ class FoodSummary {
   final int imageIndex;
   final String? imagePath;
   final String note;
+  final InventoryAudit audit;
 
   String get detail =>
       '${_formatQuantity(quantity)} $unit · ${_formatVnd(priceVnd)}';
@@ -169,6 +212,7 @@ class FoodSummary {
     imageIndex: record.imageIndex,
     imagePath: record.imagePath,
     note: record.note,
+    audit: record.audit,
   );
 
   FoodSummary copyWith({
@@ -182,6 +226,7 @@ class FoodSummary {
     int? imageIndex,
     String? imagePath,
     String? note,
+    InventoryAudit? audit,
   }) => FoodSummary(
     id: id ?? this.id,
     householdId: householdId ?? this.householdId,
@@ -193,6 +238,7 @@ class FoodSummary {
     imageIndex: imageIndex ?? this.imageIndex,
     imagePath: imagePath ?? this.imagePath,
     note: note ?? this.note,
+    audit: audit ?? this.audit,
   );
 
   Map<String, Object?> toJson() => {
@@ -206,6 +252,7 @@ class FoodSummary {
     'image_index': imageIndex,
     'image_path': imagePath,
     'note': note,
+    'audit': audit.toJson(),
   };
 
   factory FoodSummary.fromJson(Map value) {
@@ -229,6 +276,9 @@ class FoodSummary {
         imagePath:
             value['image_path'] as String? ?? value['imagePath'] as String?,
         note: value['note'] as String? ?? '',
+        audit: InventoryAudit.fromJson(
+          value['audit'] is Map ? value['audit'] as Map : {},
+        ),
       );
     }
     return FoodSummary.fromLegacy(
@@ -238,7 +288,8 @@ class FoodSummary {
       detail: value['detail'] as String? ?? '1 phần',
       status: value['status'] as String? ?? 'Tươi ngon',
       imageIndex: imageIndex,
-      imagePath: value['image_path'] as String? ?? value['imagePath'] as String?,
+      imagePath:
+          value['image_path'] as String? ?? value['imagePath'] as String?,
       note: value['note'] as String? ?? '',
     );
   }
@@ -292,6 +343,7 @@ class InventoryItemRecord {
     required this.imageIndex,
     this.imagePath,
     this.note = '',
+    this.audit = const InventoryAudit(),
   });
 
   final String id;
@@ -304,6 +356,7 @@ class InventoryItemRecord {
   final int imageIndex;
   final String? imagePath;
   final String note;
+  final InventoryAudit audit;
 
   factory InventoryItemRecord.fromSummary(
     FoodSummary summary, {
@@ -322,6 +375,7 @@ class InventoryItemRecord {
       imageIndex: summary.imageIndex,
       imagePath: imagePath ?? summary.imagePath,
       note: summary.note,
+      audit: summary.audit,
     );
   }
 
@@ -336,6 +390,7 @@ class InventoryItemRecord {
     'image_index': imageIndex,
     'image_path': imagePath,
     'note': note,
+    'audit': audit.toJson(),
   };
 
   factory InventoryItemRecord.fromJson(Map value) => InventoryItemRecord(
@@ -354,6 +409,9 @@ class InventoryItemRecord {
         0,
     imagePath: value['image_path'] as String? ?? value['imagePath'] as String?,
     note: value['note'] as String? ?? '',
+    audit: InventoryAudit.fromJson(
+      value['audit'] is Map ? value['audit'] as Map : {},
+    ),
   );
 }
 
