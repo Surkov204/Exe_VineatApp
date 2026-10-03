@@ -3,14 +3,32 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
+import 'app_services.dart';
+import 'app_tutorial.dart';
+import 'diet_preferences.dart';
 import 'food_detail.dart';
+import 'food_form_widgets.dart';
+import 'food_templates.dart';
+import 'expiry_assistant.dart';
+import 'food_notification.dart';
+import 'inventory_activity_screen.dart';
+import 'food_image.dart';
+import 'fridge_showcase.dart';
 import 'global_search.dart';
+import 'household_data_repository.dart';
 import 'inventory_store.dart';
 import 'profile_screen.dart';
 import 'receipt_models.dart';
 import 'receipt_ocr_service.dart';
 import 'recipe_detail.dart';
+import 'meal_plan_screen.dart';
+import 'menu_ingredients.dart';
+import 'shopping_menu_sheet.dart';
+import 'vineat_logo.dart';
+
+export 'reports_screen.dart' show ReportsScreen;
 
 const _green = Color(0xFF079669);
 const _ink = Color(0xFF253043);
@@ -27,10 +45,12 @@ class BrandHeader extends StatelessWidget {
     this.title,
     this.subtitle,
     this.search = false,
+    this.onTutorial,
   });
   final String? title;
   final String? subtitle;
   final bool search;
+  final VoidCallback? onTutorial;
 
   @override
   Widget build(BuildContext context) {
@@ -45,47 +65,63 @@ class BrandHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: _green,
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: const Icon(Icons.eco, color: Colors.white, size: 20),
-              ),
-              const SizedBox(width: 10),
-              const Text(
-                'ViNeat',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: _ink,
-                ),
-              ),
-              const Spacer(),
-              if (search)
-                IconButton.filledTonal(
-                  onPressed: () => showGlobalSearch(context),
-                  icon: const Icon(Icons.search),
-                  style: IconButton.styleFrom(
-                    backgroundColor: const Color(0xFFF3F4F6),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final showSearch = search && constraints.maxWidth >= 270;
+              return Row(
+                children: [
+                  const VineatLogo(width: 34, symbolOnly: true),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: const Text(
+                          'ViNeat',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            color: _ink,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              const SizedBox(width: 4),
-              IconButton.filledTonal(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
-                ),
-                icon: const Icon(Icons.person_outline),
-                style: IconButton.styleFrom(
-                  backgroundColor: const Color(0xFFD9FAEA),
-                  foregroundColor: _green,
-                ),
-              ),
-            ],
+                  if (showSearch)
+                    IconButton.filledTonal(
+                      onPressed: () => showGlobalSearch(context),
+                      icon: const Icon(Icons.search),
+                      style: IconButton.styleFrom(
+                        backgroundColor: const Color(0xFFF3F4F6),
+                      ),
+                    ),
+                  if (showSearch) const SizedBox(width: 4),
+                  if (onTutorial != null)
+                    IconButton(
+                      tooltip: 'Xem lại hướng dẫn',
+                      onPressed: onTutorial,
+                      icon: const Icon(Icons.help_outline_rounded),
+                      color: _green,
+                    ),
+                  if (constraints.maxWidth >= 220)
+                    IconButton.filledTonal(
+                      tooltip: 'Mở hồ sơ',
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const ProfileScreen(),
+                        ),
+                      ),
+                      icon: const Icon(Icons.person_outline),
+                      style: IconButton.styleFrom(
+                        backgroundColor: const Color(0xFFD9FAEA),
+                        foregroundColor: _green,
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
           if (title != null) ...[
             const SizedBox(height: 13),
@@ -110,9 +146,15 @@ class BrandHeader extends StatelessWidget {
 }
 
 class SectionTitle extends StatelessWidget {
-  const SectionTitle(this.title, {super.key, this.trailing});
+  const SectionTitle(
+    this.title, {
+    super.key,
+    this.trailing,
+    this.onTrailingTap,
+  });
   final String title;
   final String? trailing;
+  final VoidCallback? onTrailingTap;
   @override
   Widget build(BuildContext context) => Row(
     children: [
@@ -127,12 +169,19 @@ class SectionTitle extends StatelessWidget {
         ),
       ),
       if (trailing != null)
-        Text(
-          trailing!,
-          style: const TextStyle(
-            fontSize: 12,
-            color: _green,
-            fontWeight: FontWeight.w700,
+        InkWell(
+          onTap: onTrailingTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+            child: Text(
+              trailing!,
+              style: const TextStyle(
+                fontSize: 12,
+                color: _green,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ),
     ],
@@ -146,18 +195,101 @@ class FridgeScreen extends StatefulWidget {
   State<FridgeScreen> createState() => _FridgeScreenState();
 }
 
-class _FridgeScreenState extends State<FridgeScreen> {
+class _FridgeScreenState extends State<FridgeScreen>
+    with WidgetsBindingObserver {
+  bool _showOnlyAttention = false;
+  bool _addingFood = false;
+  final _inventorySectionKey = GlobalKey();
+  int _handledAddRequest = 0;
+  Timer? _clockTimer;
+  DateTime _now = DateTime.now();
+
+  void _openInventory() {
+    Navigator.of(context).push(_inventoryRoute(context));
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _handledAddRequest = homeAddFoodRequest.value;
+    homeAddFoodRequest.addListener(_handleHomeAddRequest);
+    _clockTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() => _now = DateTime.now());
+    });
+  }
+
+  void _handleHomeAddRequest() {
+    final request = homeAddFoodRequest.value;
+    if (request == _handledAddRequest || activeAppTabIndex.value != 0) return;
+    _handledAddRequest = request;
+    unawaited(_addFood());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    homeAddFoodRequest.removeListener(_handleHomeAddRequest);
+    _clockTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      setState(() => _now = DateTime.now());
+    }
+  }
+
   Future<void> _addFood() async {
-    final food = await showDialog<FoodSummary>(
-      context: context,
-      barrierColor: Colors.black54,
-      builder: (_) => const _AddFoodDialog(),
-    );
-    if (food == null || !mounted) return;
-    addFoodsToInventory([food]);
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Đã thêm ${food.$1} vào tủ lạnh')));
+    if (_addingFood) return;
+    _addingFood = true;
+    try {
+      final method = await showModalBottomSheet<AddFoodMethod>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (_) => const _AddFoodMethodSheet(),
+      );
+      if (!mounted || method == null) return;
+      if (method != AddFoodMethod.manual) {
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => Scaffold(
+              appBar: AppBar(
+                title: Text(
+                  method == AddFoodMethod.scan
+                      ? 'Scan hóa đơn'
+                      : method == AddFoodMethod.ai
+                      ? 'AI đọc hóa đơn'
+                      : 'Template thực phẩm',
+                ),
+              ),
+              body: SafeArea(child: ScanScreen(initialMethod: method)),
+            ),
+          ),
+        );
+        return;
+      }
+      final food = await showDialog<FoodSummary>(
+        context: context,
+        barrierColor: Colors.black54,
+        builder: (_) => const _AddFoodDialog(),
+      );
+      if (food == null || !mounted) return;
+      final saved = await addFoodsToInventory([food]);
+      if (!mounted) return;
+      showFoodNotification(
+        context,
+        success: saved,
+        title: saved ? 'Đã thêm thực phẩm' : 'Chưa lưu lên cloud',
+        message: saved
+            ? '${food.name} · ${AppServices.configured ? 'Đã đồng bộ với gia đình' : 'Đã lưu trên thiết bị'}'
+            : '${food.name} đang chờ đồng bộ. Bấm Thử lại ở thông báo phía trên.',
+      );
+    } finally {
+      _addingFood = false;
+    }
   }
 
   @override
@@ -171,23 +303,20 @@ class _FridgeScreenState extends State<FridgeScreen> {
       'Thứ Bảy',
       'Chủ Nhật',
     ];
-    final now = DateTime.now();
-    final today = '${dayNames[now.weekday - 1]}, ${now.day} tháng ${now.month}';
+    final now = _now;
+    final today =
+        '${dayNames[now.weekday - 1]}, ${now.day} tháng ${now.month} năm ${now.year} · ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
     return ValueListenableBuilder<int>(
       valueListenable: inventoryRevision,
       builder: (_, _, _) {
         final expiredCount = inventoryFoods
-            .where((food) => food.$3 == 'Hết hạn')
+            .where((food) => food.status == 'Hết hạn')
             .length;
         final warningCount = inventoryFoods
-            .where((food) => food.$3.contains('Còn'))
+            .where((food) => food.status.contains('Còn'))
             .length;
         final freshCount = inventoryFoods.length - expiredCount - warningCount;
-        int priceOf(FoodSummary food) {
-          final parts = food.$2.split('·');
-          final raw = parts.length > 1 ? parts.last : parts.first;
-          return int.tryParse(raw.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
-        }
+        int priceOf(FoodSummary food) => food.priceVnd;
 
         String vnd(int value) =>
             '${value.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => '.')}đ';
@@ -196,213 +325,239 @@ class _FridgeScreenState extends State<FridgeScreen> {
           (sum, food) => sum + priceOf(food),
         );
         final expiredValue = inventoryFoods
-            .where((food) => food.$3 == 'Hết hạn')
+            .where((food) => food.status == 'Hết hạn')
             .fold<int>(0, (sum, food) => sum + priceOf(food));
         final wasteRatio = totalValue == 0 ? 0.0 : expiredValue / totalValue;
-        return Stack(
+        final displayedFoods = _showOnlyAttention
+            ? inventoryFoods
+                  .where((food) => food.status != 'Tươi ngon')
+                  .toList()
+            : inventoryFoods;
+        return Column(
           children: [
-            Column(
-              children: [
-                BrandHeader(
-                  title: 'Tủ lạnh của bạn',
-                  subtitle: today,
-                  search: true,
-                ),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.all(14),
-                    children: [
-                      GridView.count(
-                        crossAxisCount: 2,
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        mainAxisSpacing: 10,
-                        crossAxisSpacing: 10,
-                        childAspectRatio: 2.35,
-                        children: [
-                          _StatTile(
-                            'Tổng số món',
-                            '${inventoryFoods.length}',
-                            Icons.kitchen_outlined,
-                            Color(0xFFE9FAF3),
-                            _green,
-                          ),
-                          _StatTile(
-                            'Còn tươi',
-                            '$freshCount',
-                            Icons.eco_outlined,
-                            Color(0xFFE9FAF0),
-                            Color(0xFF16A34A),
-                          ),
-                          _StatTile(
-                            'Sắp hết hạn',
-                            '$warningCount',
-                            Icons.warning_amber,
-                            Color(0xFFFFF8E8),
-                            Color(0xFFF59E0B),
-                          ),
-                          _StatTile(
-                            'Đã hết hạn',
-                            '$expiredCount',
-                            Icons.cancel_outlined,
-                            Color(0xFFFFF0F1),
-                            Color(0xFFEF5350),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(13),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.timer_outlined,
-                                    color: Colors.redAccent,
-                                    size: 18,
-                                  ),
-                                  SizedBox(width: 6),
-                                  Text(
-                                    'Cảnh báo hết hạn',
-                                    style: TextStyle(
+            BrandHeader(
+              title: 'Tủ lạnh của bạn',
+              subtitle: today,
+              search: true,
+              onTutorial: () => replayAppTutorialRequest.value++,
+            ),
+            Expanded(
+              child: CustomScrollView(
+                slivers: [
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+                    sliver: SliverList(
+                      delegate: SliverChildListDelegate([
+                        ValueListenableBuilder<int>(
+                          valueListenable: activeAppTabIndex,
+                          builder: (context, activeTab, _) =>
+                              SmartFridgeShowcase(
+                                key: tutorialSectionKeys[0][0],
+                                active: activeTab == 0,
+                                inventoryCount: inventoryFoods.length,
+                                expiringCount: warningCount,
+                                freshCount: freshCount,
+                                expiredCount: expiredCount,
+                                statisticsKey: tutorialSectionKeys[0][1],
+                                height:
+                                    MediaQuery.textScalerOf(context).scale(1) >
+                                        1.25
+                                    ? 160
+                                    : 140,
+                                onInventoryTap: _openInventory,
+                                onExpiringTap: () =>
+                                    setState(() => _showOnlyAttention = true),
+                              ),
+                        ),
+                        const SizedBox(height: 12),
+                        Card(
+                          key: tutorialSectionKeys[0][2],
+                          child: Padding(
+                            padding: const EdgeInsets.all(13),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.timer_outlined,
                                       color: Colors.redAccent,
-                                      fontWeight: FontWeight.w800,
+                                      size: 18,
                                     ),
-                                  ),
-                                  Spacer(),
-                                  Text(
-                                    '$warningCount sắp hết hạn',
-                                    style: TextStyle(
-                                      fontSize: 10,
+                                    const SizedBox(width: 6),
+                                    const Expanded(
+                                      child: Text(
+                                        'Cảnh báo hết hạn',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: Colors.redAccent,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Flexible(
+                                      child: Text(
+                                        '${warningCount + expiredCount} cần ưu tiên',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: _muted,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 5),
+                                    const Icon(
+                                      Icons.swipe_left_alt_outlined,
+                                      size: 17,
                                       color: _muted,
                                     ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                SingleChildScrollView(
+                                  key: const ValueKey('expiry-alerts-scroll'),
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    children: inventoryFoods
+                                        .where(
+                                          (food) => food.status != 'Tươi ngon',
+                                        )
+                                        .map(
+                                          (food) => Padding(
+                                            padding: const EdgeInsets.only(
+                                              right: 7,
+                                            ),
+                                            child: _AlertChip(
+                                              food.name,
+                                              food.status == 'Hết hạn',
+                                              onTap: () => _openInventoryFood(
+                                                context,
+                                                food,
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                        .toList(),
                                   ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              Wrap(
-                                spacing: 7,
-                                runSpacing: 7,
-                                children: inventoryFoods
-                                    .where((food) => food.$3 != 'Tươi ngon')
-                                    .take(5)
-                                    .map(
-                                      (food) => _AlertChip(
-                                        food.$1,
-                                        food.$3 == 'Hết hạn',
-                                      ),
-                                    )
-                                    .toList(),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      const SectionTitle(
-                        'Thực phẩm trong tủ',
-                        trailing: 'Xem tất cả',
-                      ),
-                      const SizedBox(height: 8),
-                      ...inventoryFoods.map(
-                        (f) => _FoodTile(
-                          name: f.$1,
-                          detail: f.$2,
-                          status: f.$3,
-                          image: f.$4,
-                          onDeleted: () {
-                            removeFoodFromInventory(f);
-                          },
-                          onUpdated: (food) => updateFoodInInventory(f, (
-                            food.name,
-                            '${food.quantity} · ${food.price}',
-                            food.status,
-                            food.image,
-                          )),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Card(
-                        color: const Color(0xFFFFF9E8),
-                        child: Padding(
-                          padding: const EdgeInsets.all(14),
-                          child: Column(
-                            children: [
-                              SectionTitle(
-                                'Dọn tủ lạnh cuối tuần',
-                                trailing: '6 món cần xử lý',
-                              ),
-                              SizedBox(height: 10),
-                              _MealSuggestion(
-                                '30 phút',
-                                'Thịt heo ba chỉ kho trứng',
-                                'Thịt heo ba chỉ · Trứng gà · Nước mắm',
-                              ),
-                              _MealSuggestion(
-                                '15 phút',
-                                'Canh rau muống nấu tôm',
-                                'Rau muống · Tôm sú · Hành lá',
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(15),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Tổng giá trị tủ lạnh',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  color: _ink,
                                 ),
-                              ),
-                              SizedBox(height: 5),
-                              Text(
-                                vnd(totalValue),
-                                style: TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w900,
-                                  color: _ink,
-                                ),
-                              ),
-                              SizedBox(height: 9),
-                              LinearProgressIndicator(
-                                value: wasteRatio,
-                                color: Colors.redAccent,
-                                backgroundColor: Color(0xFFF2F4F7),
-                              ),
-                              SizedBox(height: 6),
-                              Text(
-                                '${vnd(expiredValue)} thực phẩm đã hết hạn',
-                                style: TextStyle(fontSize: 11, color: _muted),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 90),
-                    ],
+                        const SizedBox(height: 14),
+                        Row(
+                          key: _inventorySectionKey,
+                          children: [
+                            Expanded(
+                              child: SectionTitle(
+                                _showOnlyAttention
+                                    ? 'Món cần ưu tiên'
+                                    : 'Thực phẩm trong tủ',
+                                trailing: _showOnlyAttention
+                                    ? null
+                                    : 'Xem tất cả',
+                                onTrailingTap: _openInventory,
+                              ),
+                            ),
+                            if (_showOnlyAttention)
+                              TextButton(
+                                onPressed: () =>
+                                    setState(() => _showOnlyAttention = false),
+                                child: const Text('Bỏ lọc'),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        if (displayedFoods.isEmpty)
+                          const Card(
+                            child: Padding(
+                              padding: EdgeInsets.all(18),
+                              child: Text('Hiện chưa có món nào cần ưu tiên.'),
+                            ),
+                          ),
+                      ]),
+                    ),
                   ),
-                ),
-              ],
-            ),
-            Positioned(
-              right: 20,
-              bottom: 18,
-              child: FloatingActionButton(
-                heroTag: 'add-food',
-                onPressed: _addFood,
-                backgroundColor: _green,
-                foregroundColor: Colors.white,
-                child: const Icon(Icons.add, size: 30),
+                  if (displayedFoods.isNotEmpty)
+                    SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          final f = displayedFoods[index];
+                          return _FoodTile(
+                            summary: f,
+                            name: f.name,
+                            detail: f.detail,
+                            status: f.status,
+                            image: f.imageIndex,
+                            onDeleted: () => removeFoodFromInventory(f),
+                            onUpdated: (food) => updateFoodInInventory(
+                              f,
+                              FoodSummary.fromLegacy(
+                                id: f.id,
+                                name: food.name,
+                                detail: '${food.quantity} · ${food.price}',
+                                status: food.status,
+                                imageIndex: food.image,
+                                imagePath: f.imagePath,
+                                note: food.note,
+                                expiryDate: food.expiryValue ?? f.expiry,
+                              ),
+                            ),
+                          );
+                        }, childCount: displayedFoods.length.clamp(0, 10)),
+                      ),
+                    ),
+                  SliverPadding(
+                    padding: const EdgeInsets.all(14),
+                    sliver: SliverList(
+                      delegate: SliverChildListDelegate([
+                        const SizedBox(height: 14),
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(15),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Tổng giá trị tủ lạnh',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: _ink,
+                                  ),
+                                ),
+                                SizedBox(height: 5),
+                                Text(
+                                  vnd(totalValue),
+                                  style: TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w900,
+                                    color: _ink,
+                                  ),
+                                ),
+                                SizedBox(height: 9),
+                                LinearProgressIndicator(
+                                  value: wasteRatio,
+                                  color: Colors.redAccent,
+                                  backgroundColor: Color(0xFFF2F4F7),
+                                ),
+                                SizedBox(height: 6),
+                                Text(
+                                  '${vnd(expiredValue)} thực phẩm đã hết hạn',
+                                  style: TextStyle(fontSize: 11, color: _muted),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 90),
+                      ]),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -410,6 +565,145 @@ class _FridgeScreenState extends State<FridgeScreen> {
       },
     );
   }
+}
+
+enum AddFoodMethod { scan, ai, template, manual }
+
+class _AddFoodMethodSheet extends StatelessWidget {
+  const _AddFoodMethodSheet();
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: FractionallySizedBox(
+      widthFactor: 1,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * .8,
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Thêm thực phẩm',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: _ink,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Bạn muốn thêm món bằng cách nào?',
+                style: TextStyle(color: _muted, fontSize: 13),
+              ),
+              const SizedBox(height: 20),
+              LayoutBuilder(
+                builder: (context, bounds) {
+                  final columns =
+                      MediaQuery.textScalerOf(context).scale(1) > 1.3 ? 1 : 2;
+                  final width =
+                      (bounds.maxWidth - (columns - 1) * 12) / columns;
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      _method(
+                        context,
+                        width,
+                        AddFoodMethod.scan,
+                        Icons.document_scanner_outlined,
+                        'Scan',
+                        'Chụp hóa đơn bằng camera',
+                        const Color(0xFFE4F7EE),
+                        _green,
+                      ),
+                      _method(
+                        context,
+                        width,
+                        AddFoodMethod.ai,
+                        Icons.auto_awesome_outlined,
+                        'AI',
+                        'Đọc thực phẩm từ ảnh hóa đơn',
+                        const Color(0xFFF1EBFF),
+                        const Color(0xFF7953BA),
+                      ),
+                      _method(
+                        context,
+                        width,
+                        AddFoodMethod.template,
+                        Icons.dashboard_customize_outlined,
+                        'Template',
+                        'Chọn bộ thực phẩm có sẵn',
+                        const Color(0xFFEDF3FF),
+                        const Color(0xFF3459A5),
+                      ),
+                      _method(
+                        context,
+                        width,
+                        AddFoodMethod.manual,
+                        Icons.edit_note_rounded,
+                        'Thủ công',
+                        'Tự nhập tên, lượng và giá tiền',
+                        const Color(0xFFFFF4D8),
+                        const Color(0xFF9A5A00),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+
+  Widget _method(
+    BuildContext context,
+    double width,
+    AddFoodMethod method,
+    IconData icon,
+    String label,
+    String description,
+    Color background,
+    Color color,
+  ) => SizedBox(
+    width: width,
+    child: Material(
+      color: background,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        key: ValueKey('add-method-${method.name}'),
+        borderRadius: BorderRadius.circular(20),
+        onTap: () => Navigator.pop(context, method),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 30, color: color),
+              const SizedBox(height: 14),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: color,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                description,
+                style: const TextStyle(fontSize: 12, color: _ink),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class _AddFoodDialog extends StatefulWidget {
@@ -429,6 +723,9 @@ class _AddFoodDialogState extends State<_AddFoodDialog> {
   DateTime purchaseDate = DateTime.now();
   DateTime? expiryDate;
   bool submitted = false;
+  bool savingImage = false;
+  XFile? selectedImage;
+  final imagePicker = ImagePicker();
 
   @override
   void dispose() {
@@ -453,6 +750,10 @@ class _AddFoodDialogState extends State<_AddFoodDialog> {
           : purchaseDate,
       firstDate: expiry ? purchaseDate : DateTime(2020),
       lastDate: DateTime(2035),
+      helpText: expiry ? 'Chọn hạn sử dụng' : 'Chọn ngày mua',
+      cancelText: 'Hủy',
+      confirmText: 'Chọn',
+      builder: foodDatePickerTheme,
     );
     if (chosen == null) return;
     setState(() {
@@ -467,7 +768,46 @@ class _AddFoodDialogState extends State<_AddFoodDialog> {
     });
   }
 
-  void _submit() {
+  Future<void> _pickFoodImage(ImageSource source) async {
+    try {
+      final image = await imagePicker.pickImage(
+        source: source,
+        imageQuality: 82,
+        maxWidth: 1400,
+      );
+      if (image != null && mounted) setState(() => selectedImage = image);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Không thể mở ảnh trên thiết bị này',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<String?> _saveSelectedImage() async {
+    final image = selectedImage;
+    if (image == null) return null;
+    try {
+      final root = await getApplicationDocumentsDirectory();
+      final folder = Directory(
+        '${root.path}${Platform.pathSeparator}food_images',
+      );
+      await folder.create(recursive: true);
+      final target =
+          '${folder.path}${Platform.pathSeparator}'
+          'food_${DateTime.now().microsecondsSinceEpoch}.jpg';
+      return (await File(image.path).copy(target)).path;
+    } catch (_) {
+      return image.path;
+    }
+  }
+
+  Future<void> _submit() async {
     setState(() => submitted = true);
     if (name.text.trim().isEmpty ||
         quantity.text.trim().isEmpty ||
@@ -475,6 +815,9 @@ class _AddFoodDialogState extends State<_AddFoodDialog> {
         expiryDate == null) {
       return;
     }
+    setState(() => savingImage = true);
+    final imagePath = await _saveSelectedImage();
+    if (!mounted) return;
     final rawPrice = price.text.replaceAll(RegExp(r'[^0-9]'), '');
     final displayPrice = rawPrice.isEmpty ? '0đ' : '${_money(rawPrice)}đ';
     final days = expiryDate!.difference(DateTime.now()).inDays;
@@ -490,12 +833,19 @@ class _AddFoodDialogState extends State<_AddFoodDialog> {
       'Đồ uống' => 8,
       _ => 0,
     };
-    Navigator.pop<FoodSummary>(context, (
-      name.text.trim(),
-      '${quantity.text.trim()} $unit · $displayPrice',
-      status,
-      image,
-    ));
+    final foodName = name.text.trim();
+    Navigator.pop<FoodSummary>(
+      context,
+      FoodSummary.fromLegacy(
+        name: foodName,
+        detail: '${quantity.text.trim()} $unit · $displayPrice',
+        status: status,
+        imageIndex: image,
+        expiryDate: expiryDate,
+        imagePath: imagePath,
+        note: note.text.trim(),
+      ).copyWith(audit: InventoryAudit(purchaseDate: purchaseDate)),
+    );
   }
 
   String _money(String value) =>
@@ -521,6 +871,8 @@ class _AddFoodDialogState extends State<_AddFoodDialog> {
         ),
       ),
       hintText: hint,
+      filled: true,
+      fillColor: const Color(0xFFF7FAF9),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(11)),
     );
   }
@@ -530,7 +882,8 @@ class _AddFoodDialogState extends State<_AddFoodDialog> {
     final missingExpiry = submitted && expiryDate == null;
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 540, maxHeight: 740),
         child: Column(
@@ -575,26 +928,100 @@ class _AddFoodDialogState extends State<_AddFoodDialog> {
                                 : null,
                           ),
                     ),
+                    ExpiryAssistant(
+                      name: name,
+                      baseDate: purchaseDate,
+                      expiry: expiryDate,
+                      onChanged: (date) => setState(() => expiryDate = date),
+                    ),
                     const SizedBox(height: 14),
-                    DropdownButtonFormField<String>(
-                      initialValue: category,
-                      decoration: _decoration('Danh mục'),
-                      items:
-                          const [
-                                'Rau củ',
-                                'Thịt cá',
-                                'Đồ khô',
-                                'Đồ uống',
-                                'Khác',
-                              ]
-                              .map(
-                                (value) => DropdownMenuItem(
-                                  value: value,
-                                  child: Text(value),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE5E7EB)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Hình ảnh thực phẩm',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              color: _ink,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: SizedBox(
+                              width: double.infinity,
+                              height: 150,
+                              child: selectedImage == null
+                                  ? Image.asset(
+                                      '$_assetRoot${switch (category) {
+                                        'Rau củ' => 'search-image(5)',
+                                        'Thịt cá' => 'search-image(2)',
+                                        'Đồ khô' => 'search-image(6)',
+                                        'Đồ uống' => 'search-image(8)',
+                                        _ => 'search-image',
+                                      }}',
+                                      fit: BoxFit.cover,
+                                    )
+                                  : Image.file(
+                                      File(selectedImage!.path),
+                                      fit: BoxFit.cover,
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () =>
+                                      _pickFoodImage(ImageSource.gallery),
+                                  icon: const Icon(
+                                    Icons.photo_library_outlined,
+                                  ),
+                                  label: const Text('Chọn ảnh'),
                                 ),
-                              )
-                              .toList(),
-                      onChanged: (value) => category = value ?? category,
+                              ),
+                              const SizedBox(width: 10),
+                              IconButton.filledTonal(
+                                onPressed: () =>
+                                    _pickFoodImage(ImageSource.camera),
+                                tooltip: 'Chụp ảnh',
+                                icon: const Icon(Icons.photo_camera_outlined),
+                              ),
+                              if (selectedImage != null) ...[
+                                const SizedBox(width: 6),
+                                IconButton(
+                                  onPressed: () =>
+                                      setState(() => selectedImage = null),
+                                  tooltip: 'Dùng ảnh mặc định',
+                                  icon: const Icon(Icons.refresh),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    FoodChoiceField(
+                      label: 'Danh mục',
+                      value: category,
+                      options: const [
+                        'Rau củ',
+                        'Thịt cá',
+                        'Đồ khô',
+                        'Đồ uống',
+                        'Khác',
+                      ],
+                      onChanged: (value) => setState(() => category = value),
                     ),
                     const SizedBox(height: 14),
                     Row(
@@ -615,33 +1042,22 @@ class _AddFoodDialogState extends State<_AddFoodDialog> {
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: DropdownButtonFormField<String>(
-                            initialValue: unit,
-                            decoration: _decoration('Đơn vị', required: true)
-                                .copyWith(
-                                  errorText: submitted && unit == null
-                                      ? 'Bắt buộc'
-                                      : null,
-                                ),
-                            hint: const Text('Chọn đơn vị'),
-                            items:
-                                const [
-                                      'gram',
-                                      'kg',
-                                      'quả',
-                                      'bó',
-                                      'cây',
-                                      'hộp',
-                                      'chai',
-                                      'miếng',
-                                    ]
-                                    .map(
-                                      (value) => DropdownMenuItem(
-                                        value: value,
-                                        child: Text(value),
-                                      ),
-                                    )
-                                    .toList(),
+                          child: FoodChoiceField(
+                            label: 'Đơn vị',
+                            value: unit,
+                            options: const [
+                              'gram',
+                              'kg',
+                              'quả',
+                              'bó',
+                              'cây',
+                              'hộp',
+                              'chai',
+                              'miếng',
+                            ],
+                            errorText: submitted && unit == null
+                                ? 'Bắt buộc'
+                                : null,
                             onChanged: (value) => setState(() => unit = value),
                           ),
                         ),
@@ -710,11 +1126,16 @@ class _AddFoodDialogState extends State<_AddFoodDialog> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: FilledButton(
-                      onPressed: _submit,
+                      onPressed: savingImage ? null : _submit,
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 15),
                       ),
-                      child: const Text('Thêm vào tủ'),
+                      child: savingImage
+                          ? const SizedBox.square(
+                              dimension: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Thêm vào tủ'),
                     ),
                   ),
                 ],
@@ -758,80 +1179,85 @@ class _DateField extends StatelessWidget {
   );
 }
 
-class _StatTile extends StatelessWidget {
-  const _StatTile(this.label, this.value, this.icon, this.bg, this.color);
-  final String label, value;
-  final IconData icon;
-  final Color bg, color;
+class _AlertChip extends StatelessWidget {
+  const _AlertChip(this.text, this.expired, {this.onTap});
+  final String text;
+  final bool expired;
+  final VoidCallback? onTap;
   @override
-  Widget build(BuildContext context) => Container(
-    decoration: BoxDecoration(
-      color: bg,
-      borderRadius: BorderRadius.circular(11),
-    ),
-    padding: const EdgeInsets.all(11),
-    child: Row(
-      children: [
-        Icon(icon, color: color, size: 20),
-        const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(label, style: const TextStyle(fontSize: 10, color: _muted)),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                color: color,
-              ),
-            ),
-          ],
+  Widget build(BuildContext context) => Material(
+    color: Colors.transparent,
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Ink(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+        decoration: BoxDecoration(
+          color: expired ? const Color(0xFFFFEEEE) : const Color(0xFFFFF8E5),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: expired ? const Color(0xFFFFCDD2) : const Color(0xFFFFE4A3),
+          ),
         ),
-      ],
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: expired ? Colors.redAccent : const Color(0xFFE59B0B),
+          ),
+        ),
+      ),
     ),
   );
 }
 
-class _AlertChip extends StatelessWidget {
-  const _AlertChip(this.text, this.expired);
-  final String text;
-  final bool expired;
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-    decoration: BoxDecoration(
-      color: expired ? const Color(0xFFFFEEEE) : const Color(0xFFFFF8E5),
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(
-        color: expired ? const Color(0xFFFFCDD2) : const Color(0xFFFFE4A3),
-      ),
-    ),
-    child: Text(
-      text,
-      style: TextStyle(
-        fontSize: 10,
-        fontWeight: FontWeight.w700,
-        color: expired ? Colors.redAccent : const Color(0xFFE59B0B),
-      ),
+Future<void> _openInventoryFood(BuildContext context, FoodSummary food) async {
+  final result = await Navigator.of(context).push<Object?>(
+    MaterialPageRoute(
+      builder: (_) =>
+          FoodDetailScreen(food: FoodDetailData.fromInventory(food)),
     ),
   );
+  if (result is FoodDetailData) {
+    updateFoodInInventory(
+      food,
+      FoodSummary.fromLegacy(
+        id: food.id,
+        name: result.name,
+        detail: '${result.quantity} · ${result.price}',
+        status: result.status,
+        imageIndex: result.image,
+        imagePath: food.imagePath,
+        note: result.note,
+        expiryDate: result.expiryValue ?? food.expiry,
+      ),
+    );
+  }
+  if (result == FoodRemovalResult.consumed ||
+      result == FoodRemovalResult.discarded) {
+    markFoodConsumed(food, discarded: result == FoodRemovalResult.discarded);
+  }
+  if (result is FoodRemovalResult) removeFoodFromInventory(food);
 }
 
 class _FoodTile extends StatelessWidget {
   const _FoodTile({
+    required this.summary,
     required this.name,
     required this.detail,
     required this.status,
     required this.image,
     required this.onDeleted,
     required this.onUpdated,
+    this.expandedDetails = false,
   });
+  final FoodSummary summary;
   final String name, detail, status;
   final int image;
   final VoidCallback onDeleted;
   final ValueChanged<FoodDetailData> onUpdated;
+  final bool expandedDetails;
   @override
   Widget build(BuildContext context) {
     final warning = status.contains('Còn');
@@ -841,162 +1267,565 @@ class _FoodTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () async {
+          final original = summary;
           final result = await Navigator.of(context).push<Object?>(
             MaterialPageRoute(
-              builder: (_) => FoodDetailScreen(
-                food: FoodDetailData.fromSummary(
-                  name: name,
-                  detail: detail,
-                  status: status,
-                  image: image,
-                ),
-              ),
+              builder: (_) =>
+                  FoodDetailScreen(food: FoodDetailData.fromInventory(summary)),
             ),
           );
           if (result is FoodDetailData) onUpdated(result);
-          if (result == true) onDeleted();
+          if (result == FoodRemovalResult.deleted) onDeleted();
+          if (result == FoodRemovalResult.consumed) {
+            markFoodConsumed(original);
+            onDeleted();
+          }
+          if (result == FoodRemovalResult.discarded) {
+            markFoodConsumed(original, discarded: true);
+            onDeleted();
+          }
         },
         child: Padding(
           padding: const EdgeInsets.all(9),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(9),
-                child: Image.asset(
-                  '$_assetRoot${image == 0 ? 'search-image' : 'search-image($image)'}',
-                  width: 48,
-                  height: 48,
-                  fit: BoxFit.cover,
-                ),
-              ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          child: expandedDetails
+              ? _InventoryLotCard(summary)
+              : Row(
                   children: [
-                    Text(
-                      name,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: _ink,
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(9),
+                      child: FoodImage(
+                        name: name,
+                        assetIndex: image,
+                        imagePath: summary.imagePath,
+                        width: 48,
+                        height: 48,
+                        fit: BoxFit.cover,
                       ),
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      detail,
-                      style: const TextStyle(fontSize: 10, color: _muted),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: _ink,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          if (expandedDetails) ...[
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 14,
+                              runSpacing: 8,
+                              children: [
+                                _InventoryField(
+                                  [
+                                        'kg',
+                                        'g',
+                                        'gram',
+                                      ].contains(summary.unit.toLowerCase())
+                                      ? 'Khối lượng'
+                                      : 'Số lượng',
+                                  '${summary.quantity == summary.quantity.roundToDouble() ? summary.quantity.toInt() : summary.quantity} ${summary.unit}',
+                                ),
+                                _InventoryField(
+                                  'Giá tiền',
+                                  _inventoryMoney(summary.priceVnd),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              summary.expiry == null
+                                  ? 'Chưa có hạn dùng'
+                                  : 'Hạn dùng: ${_shortDate(summary.expiry!)}',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: _muted,
+                              ),
+                            ),
+                          ] else
+                            Text(
+                              detail,
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: _muted,
+                              ),
+                            ),
+                          const SizedBox(height: 7),
+                          if (!expandedDetails)
+                            Text(
+                              summary.expiry == null
+                                  ? 'Chưa có hạn dùng'
+                                  : 'HSD ${_shortDate(summary.expiry!)}',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: _muted,
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 7),
-                    LinearProgressIndicator(
-                      value: warning
-                          ? .65
-                          : expired
-                          ? .12
-                          : .9,
-                      minHeight: 3,
-                      color: expired
-                          ? Colors.redAccent
-                          : warning
-                          ? Colors.amber
-                          : const Color(0xFF34D399),
-                      backgroundColor: const Color(0xFFF1F3F5),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: expired
+                            ? const Color(0xFFFFEEEE)
+                            : warning
+                            ? const Color(0xFFFFF7DE)
+                            : const Color(0xFFE8FBF1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        status,
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: expired
+                              ? Colors.redAccent
+                              : warning
+                              ? Colors.amber.shade800
+                              : const Color(0xFF22B573),
+                        ),
+                      ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-                decoration: BoxDecoration(
-                  color: expired
-                      ? const Color(0xFFFFEEEE)
-                      : warning
-                      ? const Color(0xFFFFF7DE)
-                      : const Color(0xFFE8FBF1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  status,
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                    color: expired
-                        ? Colors.redAccent
-                        : warning
-                        ? Colors.amber.shade800
-                        : const Color(0xFF22B573),
-                  ),
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
   }
 }
 
-class _MealSuggestion extends StatelessWidget {
-  const _MealSuggestion(this.time, this.name, this.ingredients);
-  final String time, name, ingredients;
-  @override
-  Widget build(BuildContext context) => InkWell(
-    borderRadius: BorderRadius.circular(10),
-    onTap: () => Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => RecipeDetailScreen(
-          recipe: RecipeDetailData.fromSummary(
-            name: name,
-            time: time,
-            level: 'Vừa',
-            match: '75% có sẵn',
-            image: name.contains('Canh')
-                ? 11
-                : name.contains('Bò')
-                ? 12
-                : 13,
-            ingredientsText: ingredients,
-          ),
-        ),
-      ),
+String _inventoryMoney(int value) =>
+    '${value.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => '.')}đ';
+
+Route<void> _inventoryRoute(BuildContext context) => PageRouteBuilder<void>(
+  pageBuilder: (_, _, _) => const InventoryScreen(),
+  transitionDuration: MediaQuery.disableAnimationsOf(context)
+      ? Duration.zero
+      : const Duration(milliseconds: 280),
+  reverseTransitionDuration: const Duration(milliseconds: 200),
+  transitionsBuilder: (_, animation, _, child) => FadeTransition(
+    opacity: animation,
+    child: SlideTransition(
+      position: Tween(
+        begin: const Offset(0, .035),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+      child: child,
     ),
-    child: Container(
-      margin: const EdgeInsets.only(bottom: 9),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-      ),
+  ),
+);
+
+class _InventoryLotCard extends StatelessWidget {
+  const _InventoryLotCard(this.food);
+  final FoodSummary food;
+  @override
+  Widget build(BuildContext context) {
+    final warning = food.status.contains('Còn');
+    final color = food.status == 'Hết hạn'
+        ? Colors.redAccent
+        : warning
+        ? const Color(0xFF9A5A00)
+        : _green;
+    return Padding(
+      padding: const EdgeInsets.all(5),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '🍴 $time',
-            style: const TextStyle(
-              fontSize: 10,
-              color: Colors.orange,
-              fontWeight: FontWeight.w800,
+          Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: FoodImage(
+                  name: food.name,
+                  assetIndex: food.imageIndex,
+                  imagePath: food.imagePath,
+                  width: 56,
+                  height: 56,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      food.name,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: _ink,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      food.audit.purchaseDate == null
+                          ? 'Ngày mua: Chưa ghi nhận'
+                          : 'Ngày mua: ${_shortDate(food.audit.purchaseDate!)}',
+                      key: ValueKey('inventory-date-${food.id}'),
+                      style: const TextStyle(fontSize: 11, color: _muted),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: _muted),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3F8F6),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: _InventoryField(
+                    'Còn lại',
+                    '${food.quantity == food.quantity.roundToDouble() ? food.quantity.toInt() : food.quantity} ${food.unit}',
+                  ),
+                ),
+                Expanded(
+                  child: _InventoryField(
+                    'Giá tiền',
+                    _inventoryMoney(food.priceVnd),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 7),
-          Text(
-            name,
-            style: const TextStyle(fontWeight: FontWeight.w800, color: _ink),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              Text(
+                food.expiry == null
+                    ? 'Chưa có hạn dùng'
+                    : 'Hạn dùng: ${_shortDate(food.expiry!)}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                '• ${food.status}',
+                style: TextStyle(fontSize: 12, color: color),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            ingredients,
-            style: const TextStyle(fontSize: 10, color: _muted),
-          ),
+          if (food.audit.addedBy.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Thêm bởi: ${foodPersonName(food.audit.addedBy)}',
+              style: const TextStyle(fontSize: 11, color: _muted),
+            ),
+          ],
+          if (food.audit.updatedBy.isNotEmpty)
+            Text(
+              'Cập nhật cuối: ${foodPersonName(food.audit.updatedBy)}',
+              style: const TextStyle(fontSize: 11, color: _muted),
+            ),
         ],
+      ),
+    );
+  }
+}
+
+class _InventoryField extends StatelessWidget {
+  const _InventoryField(this.label, this.value);
+  final String label, value;
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(label, style: const TextStyle(fontSize: 10, color: _muted)),
+      Text(
+        value,
+        style: const TextStyle(
+          fontSize: 13,
+          color: _ink,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    ],
+  );
+}
+
+/// The household inventory stays live while searching or editing an item.
+class _InventoryMetric extends StatelessWidget {
+  const _InventoryMetric(
+    this.icon,
+    this.label,
+    this.value,
+    this.background,
+    this.color, {
+    required this.onTap,
+    required this.selected,
+  });
+  final VoidCallback onTap;
+  final bool selected;
+  final IconData icon;
+  final String label, value;
+  final Color background, color;
+  @override
+  Widget build(BuildContext context) => Material(
+    color: background,
+    borderRadius: BorderRadius.circular(16),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? color : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 19, color: color),
+            const SizedBox(height: 8),
+            Text(label, style: TextStyle(fontSize: 11, color: color)),
+            const SizedBox(height: 3),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
+            ),
+          ],
+        ),
       ),
     ),
   );
 }
 
+class InventoryScreen extends StatefulWidget {
+  const InventoryScreen({super.key});
+  @override
+  State<InventoryScreen> createState() => _InventoryScreenState();
+}
+
+class _InventoryScreenState extends State<InventoryScreen> {
+  String _query = '';
+  int _mode = 0;
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: const Color(0xFFF7FAF9),
+    appBar: AppBar(
+      toolbarHeight: MediaQuery.textScalerOf(context).scale(1) > 1.25 ? 96 : 72,
+      actions: [
+        IconButton(
+          tooltip: 'Theo dõi thực phẩm',
+          icon: const Icon(Icons.history_outlined),
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const InventoryActivityScreen()),
+          ),
+        ),
+      ],
+      title: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Tất cả thực phẩm',
+            style: TextStyle(
+              fontSize: 21,
+              fontWeight: FontWeight.w800,
+              color: _ink,
+            ),
+          ),
+          SizedBox(height: 3),
+          Text(
+            'Quản lý tủ lạnh gia đình',
+            style: TextStyle(fontSize: 11, color: _muted),
+          ),
+        ],
+      ),
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+    ),
+    body: SafeArea(
+      child: ValueListenableBuilder<int>(
+        valueListenable: inventoryRevision,
+        builder: (context, _, _) {
+          final foods = inventoryFoods
+              .where(
+                (f) =>
+                    f.name.toLowerCase().contains(_query.toLowerCase().trim()),
+              )
+              .where((f) => _mode != 2 || f.status.contains('Còn'))
+              .toList();
+          foods.sort(
+            (a, b) => _mode == 1
+                ? b.priceVnd.compareTo(a.priceVnd)
+                : _mode == 2
+                ? a.expiry!.compareTo(b.expiry!)
+                : a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+          );
+          final value = inventoryFoods.fold<int>(
+            0,
+            (sum, f) => sum + f.priceVnd,
+          );
+          final expiring = inventoryFoods
+              .where((food) => food.status.contains('Còn'))
+              .length;
+          return CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LayoutBuilder(
+                        builder: (context, bounds) {
+                          final columns =
+                              bounds.maxWidth < 310 ||
+                                  MediaQuery.textScalerOf(context).scale(1) >
+                                      1.25
+                              ? 2
+                              : 3;
+                          final width =
+                              (bounds.maxWidth - (columns - 1) * 8) / columns;
+                          return Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              SizedBox(
+                                width: width,
+                                child: _InventoryMetric(
+                                  Icons.kitchen_outlined,
+                                  'Số món',
+                                  '${inventoryFoods.length} món',
+                                  const Color(0xFFE4F7EE),
+                                  _green,
+                                  selected: _mode == 0,
+                                  onTap: () => setState(() => _mode = 0),
+                                ),
+                              ),
+                              SizedBox(
+                                width: width,
+                                child: _InventoryMetric(
+                                  Icons.account_balance_wallet_outlined,
+                                  'Tổng giá trị',
+                                  _inventoryMoney(value),
+                                  const Color(0xFFEDF3FF),
+                                  const Color(0xFF3459A5),
+                                  selected: _mode == 1,
+                                  onTap: () => setState(() => _mode = 1),
+                                ),
+                              ),
+                              SizedBox(
+                                width: width,
+                                child: _InventoryMetric(
+                                  Icons.timer_outlined,
+                                  'Sắp hết hạn',
+                                  '$expiring món',
+                                  const Color(0xFFFFF4D8),
+                                  const Color(0xFF9A5A00),
+                                  selected: _mode == 2,
+                                  onTap: () => setState(() => _mode = 2),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        onChanged: (value) => setState(() => _query = value),
+                        decoration: const InputDecoration(
+                          hintText: 'Tìm thực phẩm…',
+                          prefixIcon: Icon(Icons.search),
+                          filled: true,
+                          fillColor: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        '${foods.length} thực phẩm · ${_mode == 1
+                            ? 'Giá trị cao → thấp'
+                            : _mode == 2
+                            ? 'Hạn dùng gần nhất trước'
+                            : 'Tất cả · Theo tên'}',
+                        style: const TextStyle(color: _muted, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (foods.isEmpty)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text('Không tìm thấy thực phẩm phù hợp.'),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final f = foods[index];
+                      return _FoodTile(
+                        summary: f,
+                        name: f.name,
+                        detail: f.detail,
+                        status: f.status,
+                        image: f.imageIndex,
+                        expandedDetails: true,
+                        onDeleted: () => removeFoodFromInventory(f),
+                        onUpdated: (food) => updateFoodInInventory(
+                          f,
+                          FoodSummary.fromLegacy(
+                            id: f.id,
+                            name: food.name,
+                            detail: '${food.quantity} · ${food.price}',
+                            status: food.status,
+                            imageIndex: food.image,
+                            imagePath: f.imagePath,
+                            note: food.note,
+                            expiryDate: food.expiryValue ?? f.expiry,
+                          ),
+                        ),
+                      );
+                    }, childCount: foods.length),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    ),
+  );
+}
+
+enum _ScanInputOrigin { recognizedReceipt, sampleTemplate, manualEntry }
+
 class ScanScreen extends StatefulWidget {
-  const ScanScreen({super.key});
+  const ScanScreen({super.key, this.initialMethod});
+  final AddFoodMethod? initialMethod;
 
   @override
   State<ScanScreen> createState() => _ScanScreenState();
@@ -1007,10 +1836,12 @@ class _ScanScreenState extends State<ScanScreen>
   int stage = 0;
   int scanStep = 0;
   XFile? receiptImage;
+  ReceiptScanResult? scanResult;
   final imagePicker = ImagePicker();
   final ocrService = ReceiptOcrService();
   bool importing = false;
   String? scanError;
+  _ScanInputOrigin inputOrigin = _ScanInputOrigin.recognizedReceipt;
   final selected = <int>{0, 1, 2, 3, 4, 5, 6, 7};
   final timers = <Timer>[];
   late final AnimationController rotation;
@@ -1018,7 +1849,7 @@ class _ScanScreenState extends State<ScanScreen>
   final results = <ReceiptLine>[];
 
   Future<void> _chooseTemplate() async {
-    final template = await showModalBottomSheet<List<(String, String, String)>>(
+    final template = await showModalBottomSheet<List<ReceiptLine>>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -1026,9 +1857,11 @@ class _ScanScreenState extends State<ScanScreen>
     );
     if (template == null || !mounted) return;
     setState(() {
+      scanResult = null;
+      inputOrigin = _ScanInputOrigin.sampleTemplate;
       results
         ..clear()
-        ..addAll(template.map(_lineFromLegacy));
+        ..addAll(template);
       selected
         ..clear()
         ..addAll(List.generate(results.length, (index) => index));
@@ -1037,16 +1870,18 @@ class _ScanScreenState extends State<ScanScreen>
   }
 
   Future<void> _manualEntry() async {
-    final items = await showDialog<List<(String, String, String)>>(
+    final items = await showDialog<List<ReceiptLine>>(
       context: context,
       barrierColor: Colors.black45,
       builder: (_) => const _ManualFoodDialog(),
     );
     if (items == null || items.isEmpty || !mounted) return;
     setState(() {
+      scanResult = null;
+      inputOrigin = _ScanInputOrigin.manualEntry;
       results
         ..clear()
-        ..addAll(items.map(_lineFromLegacy));
+        ..addAll(items);
       selected
         ..clear()
         ..addAll(List.generate(results.length, (index) => index));
@@ -1054,13 +1889,10 @@ class _ScanScreenState extends State<ScanScreen>
     });
   }
 
-  void _voiceComingSoon() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Đang mở nhập nhanh để bạn kiểm tra dữ liệu'),
-      ),
-    );
-    unawaited(_manualEntry());
+  Future<void> _saveTemplate() async {
+    final lines = selected.map((i) => results[i]).toList();
+    if (lines.isEmpty) return;
+    await saveFoodTemplateDialog(context, lines);
   }
 
   Future<void> _pickReceipt(ImageSource source) async {
@@ -1081,7 +1913,10 @@ class _ScanScreenState extends State<ScanScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Không đọc được ảnh hóa đơn. Hãy thử ảnh rõ hơn.'),
+          content: Text(
+            'Không đọc được ảnh hóa đơn. Hãy thử ảnh rõ hơn.',
+            textAlign: TextAlign.center,
+          ),
         ),
       );
       setState(() {
@@ -1091,57 +1926,93 @@ class _ScanScreenState extends State<ScanScreen>
     }
   }
 
-  void _addSelectedToFridge() {
+  Future<void> _addSelectedToFridge() async {
     if (importing) return;
     setState(() => importing = true);
     final foods = selected.map((index) {
       final item = results[index];
-      final days = item.estimatedExpiryDate?.difference(DateTime.now()).inDays;
-      final status = days == null
-          ? 'Tươi ngon'
-          : days < 0
-          ? 'Hết hạn'
-          : days <= 3
-          ? 'Còn ${days < 1 ? 1 : days} ngày'
-          : 'Tươi ngon';
-      return (
-        item.normalizedName,
-        '${_decimal(item.quantity)} ${item.unit} · ${_formatVnd(item.totalPriceVnd)}',
-        status,
-        inventoryFoods.length % 10,
+      return FoodSummary(
+        name: item.normalizedName,
+        quantity: item.quantity,
+        unit: item.unit,
+        priceVnd: item.totalPriceVnd,
+        imageIndex: inventoryFoods.length % 10,
+        expiry: item.estimatedExpiryDate,
       );
     });
-    addFoodsToInventory(foods);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Đã thêm ${selected.length} thực phẩm vào tủ lạnh'),
-      ),
+    try {
+      if (AppServices.configured &&
+          HouseholdService.instance.active.value != null &&
+          scanResult != null) {
+        HouseholdDataRepository.instance.syncStatus.value =
+            'Đang lưu hóa đơn và thực phẩm…';
+        await HouseholdDataRepository.instance.importReceipt(
+          lines: results,
+          selectedIndexes: selected,
+          rawText: scanResult!.rawText,
+          storeName: scanResult!.storeName,
+          purchasedAt: scanResult!.purchasedAt,
+          totalVnd: scanResult!.totalVnd,
+          localImagePath: receiptImage?.path,
+        );
+        final snapshot = await HouseholdDataRepository.instance
+            .loadActiveHousehold();
+        replaceInventoryFromRemote(
+          records: snapshot.inventory,
+          events: snapshot.events,
+        );
+        HouseholdDataRepository.instance.syncStatus.value = null;
+      } else {
+        final saved = await addFoodsToInventory(foods);
+        if (!saved) {
+          if (mounted) {
+            showFoodNotification(
+              context,
+              success: false,
+              title: 'Có món chưa đồng bộ',
+              message:
+                  'Danh sách được giữ trên thiết bị. Bấm Thử lại để lưu lên cloud.',
+            );
+          }
+          if (mounted) setState(() => importing = false);
+          return;
+        }
+      }
+    } catch (_) {
+      HouseholdDataRepository.instance.syncStatus.value =
+          'Hóa đơn chưa được lưu trên máy chủ. Thông tin đang giữ ở bước rà soát; thử lưu lại khi có mạng.';
+      if (mounted) {
+        setState(() => importing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Chưa lưu được hóa đơn. Hãy thử lại.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    showFoodNotification(
+      context,
+      title: 'Đã thêm ${selected.length} thực phẩm',
+      message: AppServices.configured
+          ? 'Đã đồng bộ vào tủ lạnh gia đình.'
+          : 'Đã lưu vào tủ lạnh trên thiết bị.',
     );
+    if (widget.initialMethod != null) {
+      Navigator.of(context).pop();
+      return;
+    }
     setState(() {
       importing = false;
       stage = 0;
       receiptImage = null;
+      scanResult = null;
     });
   }
-
-  ReceiptLine _lineFromLegacy((String, String, String) item) {
-    final detail = item.$2.split('·').first.trim().split(' ');
-    return ReceiptLine(
-      rawName: item.$1,
-      normalizedName: item.$1,
-      quantity: double.tryParse(detail.first) ?? 1,
-      unit: detail.length > 1 ? detail[1] : 'phần',
-      totalPriceVnd:
-          int.tryParse(item.$3.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0,
-      estimatedExpiryDate: DateTime.now().add(const Duration(days: 7)),
-    );
-  }
-
-  String _decimal(double value) => value == value.roundToDouble()
-      ? value.toInt().toString()
-      : value.toStringAsFixed(2);
-  String _formatVnd(int value) =>
-      '${value.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => '.')}đ';
 
   Future<void> _editResult(int index) async {
     final edited = await showDialog<ReceiptLine>(
@@ -1158,6 +2029,21 @@ class _ScanScreenState extends State<ScanScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1100),
     );
+    if (widget.initialMethod != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        switch (widget.initialMethod!) {
+          case AddFoodMethod.scan:
+            unawaited(_pickReceipt(ImageSource.camera));
+          case AddFoodMethod.ai:
+            unawaited(_pickReceipt(ImageSource.gallery));
+          case AddFoodMethod.template:
+            unawaited(_chooseTemplate());
+          case AddFoodMethod.manual:
+            break;
+        }
+      });
+    }
   }
 
   @override
@@ -1172,6 +2058,7 @@ class _ScanScreenState extends State<ScanScreen>
     setState(() {
       stage = 1;
       scanStep = 0;
+      inputOrigin = _ScanInputOrigin.recognizedReceipt;
     });
     rotation.repeat();
     try {
@@ -1192,6 +2079,7 @@ class _ScanScreenState extends State<ScanScreen>
         ..addAll(List.generate(results.length, (index) => index));
       rotation.stop();
       setState(() {
+        scanResult = scan;
         stage = 2;
         scanError = null;
       });
@@ -1204,7 +2092,10 @@ class _ScanScreenState extends State<ScanScreen>
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('OCR chưa đọc được hóa đơn. Hãy chụp gần và rõ hơn.'),
+          content: Text(
+            'OCR chưa đọc được hóa đơn. Hãy chụp gần và rõ hơn.',
+            textAlign: TextAlign.center,
+          ),
         ),
       );
     }
@@ -1224,141 +2115,109 @@ class _ScanScreenState extends State<ScanScreen>
       stage = 0;
       scanStep = 0;
       receiptImage = null;
-      selected
-        ..clear()
-        ..addAll(List.generate(results.length, (index) => index));
+      scanResult = null;
+      scanError = null;
+      results.clear();
+      selected.clear();
+      inputOrigin = _ScanInputOrigin.recognizedReceipt;
     });
   }
 
   @override
   Widget build(BuildContext context) => Column(
     children: [
-      const BrandHeader(title: 'Scan hóa đơn', search: true),
+      if (widget.initialMethod == null)
+        const BrandHeader(title: 'Nhập thực phẩm', search: true),
       Expanded(
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
             _InputMethodCard(
+              key: widget.initialMethod == null ? tutorialTargetKeys[1] : null,
+              onScan: () => _pickReceipt(ImageSource.gallery),
               onTemplate: _chooseTemplate,
               onManual: _manualEntry,
-              onVoice: _voiceComingSoon,
             ),
             const SizedBox(height: 14),
             if (stage == 0) ...[
               Container(
-                height: 360,
+                key: widget.initialMethod == null
+                    ? tutorialSectionKeys[1][0]
+                    : null,
+                height: 240,
                 decoration: BoxDecoration(
-                  color: Colors.black,
+                  color: const Color(0xFFF0F8F4),
+                  border: Border.all(color: const Color(0xFFDCEBE4)),
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: Stack(
-                  children: [
-                    if (receiptImage != null)
-                      Positioned.fill(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: Image.file(
-                            File(receiptImage!.path),
-                            fit: BoxFit.cover,
-                            color: Colors.black38,
-                            colorBlendMode: BlendMode.darken,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 58,
+                          height: 58,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Icon(
+                            Icons.receipt_long_outlined,
+                            size: 31,
+                            color: _green,
                           ),
                         ),
-                      ),
-                    const Align(
-                      alignment: Alignment.topCenter,
-                      child: Padding(
-                        padding: EdgeInsets.only(top: 18),
-                        child: Text(
-                          'Đặt hóa đơn trong khung',
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Chưa chọn ảnh hóa đơn',
+                          textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: _ink,
                           ),
                         ),
-                      ),
-                    ),
-                    Center(
-                      child: Container(
-                        width: 280,
-                        height: 180,
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: const Color(0xFF9AA0A6),
-                            width: 2,
-                          ),
-                          borderRadius: BorderRadius.circular(10),
+                        const SizedBox(height: 5),
+                        const Text(
+                          'Chụp ảnh hoặc chọn ảnh rõ nét để nhận diện món.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 12, color: _muted),
                         ),
-                      ),
+                      ],
                     ),
-                    Positioned(
-                      right: 14,
-                      top: 55,
-                      child: Column(
-                        children: [
-                          IconButton.filled(
-                            tooltip: 'Dùng ảnh hóa đơn mẫu',
-                            onPressed: () => _pickReceipt(ImageSource.gallery),
-                            icon: const Icon(Icons.image_outlined),
-                            style: IconButton.styleFrom(
-                              backgroundColor: Colors.white24,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                height: 100,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(
-                    bottom: Radius.circular(16),
                   ),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    IconButton.filledTonal(
-                      tooltip: 'Chọn ảnh hóa đơn mẫu',
-                      onPressed: () => _pickReceipt(ImageSource.gallery),
-                      icon: const Icon(Icons.image_outlined),
-                    ),
-                    const SizedBox(width: 28),
-                    InkWell(
-                      onTap: () => _pickReceipt(ImageSource.camera),
-                      customBorder: const CircleBorder(),
-                      child: Container(
-                        width: 70,
-                        height: 70,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: const Color(0xFFE4E7EC),
-                            width: 5,
-                          ),
-                        ),
-                        child: Center(
-                          child: Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              color: _green,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: const Color(0xFFD5D9E0),
-                                width: 2,
-                              ),
-                            ),
-                          ),
-                        ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                key: widget.initialMethod == null
+                    ? tutorialSectionKeys[1][1]
+                    : null,
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 50,
+                      child: FilledButton.icon(
+                        onPressed: () => _pickReceipt(ImageSource.gallery),
+                        icon: const Icon(Icons.image_outlined),
+                        label: const Text('Chọn ảnh'),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: SizedBox(
+                      height: 50,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _pickReceipt(ImageSource.camera),
+                        icon: const Icon(Icons.photo_camera_outlined),
+                        label: const Text('Chụp ảnh'),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ] else if (stage == 1)
               _ScanningCard(rotation: rotation, step: scanStep)
@@ -1366,6 +2225,7 @@ class _ScanScreenState extends State<ScanScreen>
               _ScanResults(
                 items: results,
                 selected: selected,
+                inputOrigin: inputOrigin,
                 onToggle: (index) => setState(
                   () => selected.contains(index)
                       ? selected.remove(index)
@@ -1391,45 +2251,43 @@ class _ScanScreenState extends State<ScanScreen>
                 ),
               ),
             const SizedBox(height: 18),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    SectionTitle('Cửa hàng hỗ trợ'),
-                    SizedBox(height: 12),
-                    _Store(Icons.storefront_outlined, 'Winmart'),
-                    _Store(Icons.store_outlined, 'Bách Hóa Xanh'),
-                    _Store(Icons.apartment, 'Mega Market'),
-                    _Store(Icons.apartment, 'Big C / GO!'),
-                    _Store(Icons.apartment, 'Lotte Mart'),
-                  ],
-                ),
+            if (stage == 2)
+              OutlinedButton.icon(
+                onPressed: selected.isEmpty ? null : _saveTemplate,
+                icon: const Icon(Icons.bookmark_add_outlined),
+                label: const Text('Tạo mẫu từ danh sách đã chọn'),
               ),
-            ),
-            const SizedBox(height: 16),
             Card(
+              color: const Color(0xFFF1F8FF),
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Column(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SectionTitle('Quét gần đây', trailing: 'Xem tất cả'),
-                    SizedBox(height: 10),
-                    _RecentScan(
-                      'Winmart',
-                      '${_shortDate(DateTime.now().subtract(const Duration(days: 2)))} · 12 món',
-                      '385.000đ',
-                    ),
-                    _RecentScan(
-                      'Bách Hóa Xanh',
-                      '${_shortDate(DateTime.now().subtract(const Duration(days: 5)))} · 8 món',
-                      '156.000đ',
-                    ),
-                    _RecentScan(
-                      'Co.op Mart',
-                      '${_shortDate(DateTime.now().subtract(const Duration(days: 9)))} · 15 món',
-                      '520.000đ',
+                    const Icon(Icons.privacy_tip_outlined, color: _green),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Rõ ràng về dữ liệu',
+                            style: TextStyle(
+                              color: _ink,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          SizedBox(height: 5),
+                          Text(
+                            'OCR xử lý trên thiết bị. Hóa đơn chỉ được lưu sau khi bạn rà soát và xác nhận. Danh sách mẫu hoặc nhập thủ công chỉ thêm thực phẩm, không tạo lịch sử quét giả.',
+                            style: TextStyle(
+                              color: _muted,
+                              fontSize: 11,
+                              height: 1.45,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -1467,12 +2325,13 @@ class _ScanScreenState extends State<ScanScreen>
 
 class _InputMethodCard extends StatelessWidget {
   const _InputMethodCard({
+    super.key,
+    required this.onScan,
     required this.onTemplate,
     required this.onManual,
-    required this.onVoice,
   });
 
-  final VoidCallback onTemplate, onManual, onVoice;
+  final VoidCallback onScan, onTemplate, onManual;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -1483,38 +2342,47 @@ class _InputMethodCard extends StatelessWidget {
         children: [
           const SectionTitle('Chọn cách thêm thực phẩm'),
           const SizedBox(height: 11),
-          Row(
-            children: [
-              _InputMethod(
-                icon: Icons.receipt_long_outlined,
-                label: 'Quét hóa đơn',
-                note: 'Chụp hoặc tải ảnh',
-                active: true,
-                onTap: () {},
-              ),
-              const SizedBox(width: 8),
-              _InputMethod(
-                icon: Icons.dashboard_customize_outlined,
-                label: 'Theo mẫu',
-                note: 'Chọn danh sách có sẵn',
-                onTap: onTemplate,
-              ),
-              const SizedBox(width: 8),
-              _InputMethod(
-                icon: Icons.edit_note_outlined,
-                label: 'Thủ công',
-                note: 'Tự nhập từng món',
-                onTap: onManual,
-              ),
-              const SizedBox(width: 8),
-              _InputMethod(
-                icon: Icons.mic_none,
-                label: 'Giọng nói',
-                note: 'Sắp ra mắt',
-                disabled: true,
-                onTap: onVoice,
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = constraints.maxWidth < 420 ? 2 : 3;
+              const gap = 8.0;
+              final width =
+                  (constraints.maxWidth - gap * (columns - 1)) / columns;
+              return Wrap(
+                spacing: gap,
+                runSpacing: gap,
+                children: [
+                  SizedBox(
+                    width: width,
+                    child: _InputMethod(
+                      icon: Icons.receipt_long_outlined,
+                      label: 'Quét hóa đơn',
+                      note: 'Chụp hoặc tải ảnh',
+                      active: true,
+                      onTap: onScan,
+                    ),
+                  ),
+                  SizedBox(
+                    width: width,
+                    child: _InputMethod(
+                      icon: Icons.dashboard_customize_outlined,
+                      label: 'Dữ liệu mẫu',
+                      note: 'Không phải hóa đơn thật',
+                      onTap: onTemplate,
+                    ),
+                  ),
+                  SizedBox(
+                    width: width,
+                    child: _InputMethod(
+                      icon: Icons.edit_note_outlined,
+                      label: 'Nhập thủ công',
+                      note: 'Tự nhập từng món',
+                      onTap: onManual,
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -1529,149 +2397,369 @@ class _InputMethod extends StatelessWidget {
     required this.note,
     required this.onTap,
     this.active = false,
-    this.disabled = false,
   });
 
   final IconData icon;
   final String label, note;
   final VoidCallback onTap;
-  final bool active, disabled;
+  final bool active;
 
   @override
-  Widget build(BuildContext context) => Expanded(
-    child: InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(11),
-      child: Container(
-        height: 92,
-        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 9),
-        decoration: BoxDecoration(
-          color: active
-              ? const Color(0xFFE9FBF4)
-              : disabled
-              ? const Color(0xFFF7F8FA)
-              : Colors.white,
-          borderRadius: BorderRadius.circular(11),
-          border: Border.all(
-            color: active ? const Color(0xFF8BE1C3) : const Color(0xFFE5E7EB),
-          ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 23, color: disabled ? _muted : _green),
-            const SizedBox(height: 5),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                color: disabled ? _muted : _ink,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              note,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 8, color: _muted),
-            ),
-          ],
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(11),
+    child: Container(
+      height: 92,
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 9),
+      decoration: BoxDecoration(
+        color: active ? const Color(0xFFE9FBF4) : Colors.white,
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(
+          color: active ? const Color(0xFF8BE1C3) : const Color(0xFFE5E7EB),
         ),
       ),
-    ),
-  );
-}
-
-class _FoodTemplateSheet extends StatelessWidget {
-  const _FoodTemplateSheet();
-
-  static const templates = [
-    (
-      'Đi chợ hàng tuần',
-      '8 món thiết yếu cho cả nhà',
-      Icons.shopping_basket_outlined,
-      [
-        ('Thịt heo', '500g · HSD dự kiến: 7 ngày', '65.000đ'),
-        ('Trứng gà', '10 quả · HSD dự kiến: 21 ngày', '35.000đ'),
-        ('Rau muống', '2 bó · HSD dự kiến: 3 ngày', '15.000đ'),
-        ('Cà chua', '5 quả · HSD dự kiến: 7 ngày', '25.000đ'),
-        ('Cải thảo', '1 cây · HSD dự kiến: 7 ngày', '20.000đ'),
-        ('Sữa tươi', '2 hộp · HSD dự kiến: 10 ngày', '32.000đ'),
-        ('Đậu hũ', '4 miếng · HSD dự kiến: 3 ngày', '10.000đ'),
-        ('Hành lá', '2 bó · HSD dự kiến: 3 ngày', '15.000đ'),
-      ],
-    ),
-    (
-      'Bữa sáng nhanh',
-      '5 món cho bữa sáng trong tuần',
-      Icons.free_breakfast_outlined,
-      [
-        ('Trứng gà', '10 quả · HSD dự kiến: 21 ngày', '35.000đ'),
-        ('Bánh mì', '5 ổ · HSD dự kiến: 3 ngày', '20.000đ'),
-        ('Sữa tươi', '5 hộp · HSD dự kiến: 10 ngày', '40.000đ'),
-        ('Chuối', '1 nải · HSD dự kiến: 5 ngày', '25.000đ'),
-        ('Yến mạch', '500g · HSD dự kiến: 180 ngày', '55.000đ'),
-      ],
-    ),
-    (
-      'Lẩu cuối tuần',
-      '6 nguyên liệu cho 4 người',
-      Icons.soup_kitchen_outlined,
-      [
-        ('Thịt bò', '500g · HSD dự kiến: 3 ngày', '125.000đ'),
-        ('Tôm sú', '500g · HSD dự kiến: 2 ngày', '110.000đ'),
-        ('Nấm kim châm', '3 gói · HSD dự kiến: 5 ngày', '30.000đ'),
-        ('Rau cải', '2 bó · HSD dự kiến: 3 ngày', '24.000đ'),
-        ('Đậu hũ', '4 miếng · HSD dự kiến: 3 ngày', '10.000đ'),
-        ('Mì gói', '4 gói · HSD dự kiến: 180 ngày', '20.000đ'),
-      ],
-    ),
-  ];
-
-  @override
-  Widget build(BuildContext context) => SafeArea(
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 22),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Text(
-            'Chọn mẫu thực phẩm',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Bạn vẫn có thể chọn lại từng món trước khi thêm vào tủ.',
-            style: TextStyle(fontSize: 12, color: _muted),
-          ),
-          const SizedBox(height: 14),
-          ...templates.map(
-            (template) => Card(
-              margin: const EdgeInsets.only(bottom: 9),
-              child: ListTile(
-                onTap: () => Navigator.pop(context, template.$4),
-                leading: CircleAvatar(
-                  backgroundColor: const Color(0xFFE7FAF3),
-                  foregroundColor: _green,
-                  child: Icon(template.$3),
-                ),
-                title: Text(
-                  template.$1,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-                subtitle: Text(template.$2),
-                trailing: const Icon(Icons.chevron_right),
+          Icon(icon, size: 23, color: _green),
+          const SizedBox(height: 5),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: _ink,
               ),
             ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            note,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 9, color: _muted),
           ),
         ],
       ),
     ),
   );
+}
+
+class _FoodTemplateItem {
+  const _FoodTemplateItem({
+    required this.name,
+    required this.quantity,
+    required this.unit,
+    required this.totalPriceVnd,
+    required this.shelfLifeDays,
+  });
+
+  final String name;
+  final double quantity;
+  final String unit;
+  final int totalPriceVnd;
+  final int shelfLifeDays;
+
+  ReceiptLine toReceiptLine({DateTime? referenceTime}) {
+    final now = referenceTime ?? DateTime.now();
+    return ReceiptLine(
+      rawName: name,
+      normalizedName: name,
+      quantity: quantity,
+      unit: unit,
+      unitPriceVnd: quantity <= 0 ? 0 : (totalPriceVnd / quantity).round(),
+      totalPriceVnd: totalPriceVnd,
+      estimatedExpiryDate: now.add(Duration(days: shelfLifeDays)),
+      confidence: 1,
+    );
+  }
+}
+
+class _FoodTemplate {
+  const _FoodTemplate({
+    required this.title,
+    required this.description,
+    required this.icon,
+    required this.items,
+  });
+
+  final String title;
+  final String description;
+  final IconData icon;
+  final List<_FoodTemplateItem> items;
+
+  List<ReceiptLine> buildLines() =>
+      items.map((item) => item.toReceiptLine()).toList();
+}
+
+class _FoodTemplateSheet extends StatelessWidget {
+  const _FoodTemplateSheet();
+
+  static final templates = <_FoodTemplate>[
+    _FoodTemplate(
+      title: 'Đi chợ hàng tuần',
+      description: '8 món thiết yếu cho cả nhà',
+      icon: Icons.shopping_basket_outlined,
+      items: [
+        _FoodTemplateItem(
+          name: 'Thịt heo',
+          quantity: 500,
+          unit: 'gram',
+          totalPriceVnd: 65000,
+          shelfLifeDays: 7,
+        ),
+        _FoodTemplateItem(
+          name: 'Trứng gà',
+          quantity: 10,
+          unit: 'quả',
+          totalPriceVnd: 35000,
+          shelfLifeDays: 21,
+        ),
+        _FoodTemplateItem(
+          name: 'Rau muống',
+          quantity: 2,
+          unit: 'bó',
+          totalPriceVnd: 15000,
+          shelfLifeDays: 3,
+        ),
+        _FoodTemplateItem(
+          name: 'Cà chua',
+          quantity: 5,
+          unit: 'quả',
+          totalPriceVnd: 25000,
+          shelfLifeDays: 7,
+        ),
+        _FoodTemplateItem(
+          name: 'Cải thảo',
+          quantity: 1,
+          unit: 'cây',
+          totalPriceVnd: 20000,
+          shelfLifeDays: 7,
+        ),
+        _FoodTemplateItem(
+          name: 'Sữa tươi',
+          quantity: 2,
+          unit: 'hộp',
+          totalPriceVnd: 32000,
+          shelfLifeDays: 10,
+        ),
+        _FoodTemplateItem(
+          name: 'Đậu hũ',
+          quantity: 4,
+          unit: 'miếng',
+          totalPriceVnd: 10000,
+          shelfLifeDays: 3,
+        ),
+        _FoodTemplateItem(
+          name: 'Hành lá',
+          quantity: 2,
+          unit: 'bó',
+          totalPriceVnd: 15000,
+          shelfLifeDays: 3,
+        ),
+      ],
+    ),
+    _FoodTemplate(
+      title: 'Bữa sáng nhanh',
+      description: '5 món cho bữa sáng trong tuần',
+      icon: Icons.free_breakfast_outlined,
+      items: [
+        _FoodTemplateItem(
+          name: 'Trứng gà',
+          quantity: 10,
+          unit: 'quả',
+          totalPriceVnd: 35000,
+          shelfLifeDays: 21,
+        ),
+        _FoodTemplateItem(
+          name: 'Bánh mì',
+          quantity: 5,
+          unit: 'ổ',
+          totalPriceVnd: 20000,
+          shelfLifeDays: 3,
+        ),
+        _FoodTemplateItem(
+          name: 'Sữa tươi',
+          quantity: 5,
+          unit: 'hộp',
+          totalPriceVnd: 40000,
+          shelfLifeDays: 10,
+        ),
+        _FoodTemplateItem(
+          name: 'Chuối',
+          quantity: 1,
+          unit: 'nải',
+          totalPriceVnd: 25000,
+          shelfLifeDays: 5,
+        ),
+        _FoodTemplateItem(
+          name: 'Yến mạch',
+          quantity: 500,
+          unit: 'gram',
+          totalPriceVnd: 55000,
+          shelfLifeDays: 180,
+        ),
+      ],
+    ),
+    _FoodTemplate(
+      title: 'Lẩu cuối tuần',
+      description: '6 nguyên liệu cho 4 người',
+      icon: Icons.soup_kitchen_outlined,
+      items: [
+        _FoodTemplateItem(
+          name: 'Thịt bò',
+          quantity: 500,
+          unit: 'gram',
+          totalPriceVnd: 125000,
+          shelfLifeDays: 3,
+        ),
+        _FoodTemplateItem(
+          name: 'Tôm sú',
+          quantity: 500,
+          unit: 'gram',
+          totalPriceVnd: 110000,
+          shelfLifeDays: 2,
+        ),
+        _FoodTemplateItem(
+          name: 'Nấm kim châm',
+          quantity: 3,
+          unit: 'gói',
+          totalPriceVnd: 30000,
+          shelfLifeDays: 5,
+        ),
+        _FoodTemplateItem(
+          name: 'Rau cải',
+          quantity: 2,
+          unit: 'bó',
+          totalPriceVnd: 24000,
+          shelfLifeDays: 3,
+        ),
+        _FoodTemplateItem(
+          name: 'Đậu hũ',
+          quantity: 4,
+          unit: 'miếng',
+          totalPriceVnd: 10000,
+          shelfLifeDays: 3,
+        ),
+        _FoodTemplateItem(
+          name: 'Mì gói',
+          quantity: 4,
+          unit: 'gói',
+          totalPriceVnd: 20000,
+          shelfLifeDays: 180,
+        ),
+      ],
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final sheetHeight = MediaQuery.sizeOf(context).height * .72;
+    return SafeArea(
+      child: SizedBox(
+        height: sheetHeight,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Chọn mẫu thực phẩm',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Bạn vẫn có thể chọn lại từng món trước khi thêm vào tủ.',
+                style: TextStyle(fontSize: 12, color: _muted),
+              ),
+              const SizedBox(height: 14),
+              FilledButton.icon(
+                icon: const Icon(Icons.add),
+                label: const Text('Tạo mẫu mới'),
+                onPressed: () async {
+                  final lines = await showDialog<List<ReceiptLine>>(
+                    context: context,
+                    builder: (_) => const _ManualFoodDialog(),
+                  );
+                  if (lines == null || lines.isEmpty || !context.mounted) {
+                    return;
+                  }
+                  final saved = await saveFoodTemplateDialog(context, lines);
+                  if (saved && context.mounted) Navigator.pop(context, lines);
+                },
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: ListView(
+                  padding: EdgeInsets.zero,
+                  children: [
+                    FutureBuilder<List<SavedFoodTemplate>>(
+                      future: FoodTemplateStore.load(),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasError) {
+                          return const Text(
+                            'Chưa tải được mẫu riêng. Kiểm tra kết nối rồi mở lại.',
+                          );
+                        }
+                        if (!snapshot.hasData) {
+                          return const LinearProgressIndicator();
+                        }
+                        return Column(
+                          children: snapshot.data!
+                              .map(
+                                (t) => Card(
+                                  child: ListTile(
+                                    leading: const Icon(
+                                      Icons.bookmark,
+                                      color: _green,
+                                    ),
+                                    title: Text(t.name),
+                                    subtitle: Text(
+                                      '${t.items.length} món · Mẫu của bạn',
+                                    ),
+                                    trailing: const Icon(Icons.chevron_right),
+                                    onTap: () =>
+                                        Navigator.pop(context, t.buildLines()),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                        );
+                      },
+                    ),
+                    ...templates.map(
+                      (template) => Card(
+                        margin: const EdgeInsets.only(bottom: 9),
+                        child: ListTile(
+                          onTap: () =>
+                              Navigator.pop(context, template.buildLines()),
+                          leading: CircleAvatar(
+                            backgroundColor: const Color(0xFFE7FAF3),
+                            foregroundColor: _green,
+                            child: Icon(template.icon),
+                          ),
+                          title: Text(
+                            template.title,
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          subtitle: Text(template.description),
+                          trailing: const Icon(Icons.chevron_right),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _ManualFoodDialog extends StatefulWidget {
@@ -1685,9 +2773,24 @@ class _ManualFoodDialogState extends State<_ManualFoodDialog> {
   final name = TextEditingController();
   final quantity = TextEditingController();
   final price = TextEditingController();
-  final items = <(String, String, String)>[];
+  final items = <ReceiptLine>[];
   String unit = 'gram';
-  String expiry = '3 ngày';
+  DateTime? expiryDate;
+  String? error;
+
+  Future<void> _pickExpiry() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: expiryDate ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      helpText: 'Chọn ngày hết hạn',
+      confirmText: 'Chọn',
+      cancelText: 'Hủy',
+      builder: foodDatePickerTheme,
+    );
+    if (date != null && mounted) setState(() => expiryDate = date);
+  }
 
   @override
   void dispose() {
@@ -1698,133 +2801,173 @@ class _ManualFoodDialogState extends State<_ManualFoodDialog> {
   }
 
   void _addItem() {
-    if (name.text.trim().isEmpty || quantity.text.trim().isEmpty) return;
-    final formattedPrice = price.text.trim().isEmpty
-        ? 'Chưa nhập giá'
-        : '${price.text.trim()}đ';
+    final parsedQuantity = double.tryParse(
+      quantity.text.trim().replaceAll(',', '.'),
+    );
+    final parsedPrice = int.tryParse(
+      price.text.replaceAll(RegExp(r'[^0-9]'), ''),
+    );
+    if (name.text.trim().isEmpty ||
+        parsedQuantity == null ||
+        parsedQuantity <= 0 ||
+        expiryDate == null) {
+      setState(
+        () => error = 'Nhập tên, số lượng lớn hơn 0 và chọn ngày hết hạn.',
+      );
+      return;
+    }
+    final totalPrice = parsedPrice ?? 0;
     setState(() {
-      items.add((
-        name.text.trim(),
-        '${quantity.text.trim()} $unit · HSD dự kiến: $expiry',
-        formattedPrice,
-      ));
+      items.add(
+        ReceiptLine(
+          rawName: name.text.trim(),
+          normalizedName: name.text.trim(),
+          quantity: parsedQuantity,
+          unit: unit,
+          unitPriceVnd: (parsedPrice == null || parsedQuantity == 0)
+              ? 0
+              : (totalPrice / parsedQuantity).round(),
+          totalPriceVnd: totalPrice,
+          estimatedExpiryDate: expiryDate,
+          confidence: 1,
+        ),
+      );
       name.clear();
       quantity.clear();
       price.clear();
+      expiryDate = null;
+      error = null;
     });
   }
 
   @override
   Widget build(BuildContext context) => AlertDialog(
+    backgroundColor: Colors.white,
+    surfaceTintColor: Colors.transparent,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
     title: const Text('Nhập thực phẩm thủ công'),
     content: SizedBox(
       width: 470,
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: name,
-              decoration: const InputDecoration(
-                labelText: 'Tên thực phẩm *',
-                prefixIcon: Icon(Icons.restaurant_outlined),
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          inputDecorationTheme: InputDecorationTheme(
+            filled: true,
+            fillColor: const Color(0xFFF7FAF9),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: name,
+                decoration: const InputDecoration(
+                  labelText: 'Tên thực phẩm *',
+                  prefixIcon: Icon(Icons.restaurant_outlined),
+                ),
               ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: quantity,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Số lượng *'),
+              const SizedBox(height: 10),
+              ExpiryAssistant(
+                name: name,
+                baseDate: DateTime.now(),
+                expiry: expiryDate,
+                onChanged: (date) => setState(() => expiryDate = date),
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: quantity,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Số lượng *',
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: unit,
-                    decoration: const InputDecoration(labelText: 'Đơn vị'),
-                    items: const ['gram', 'kg', 'quả', 'bó', 'hộp', 'chai']
-                        .map(
-                          (value) => DropdownMenuItem(
-                            value: value,
-                            child: Text(value),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) => unit = value ?? unit,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FoodChoiceField(
+                      label: 'Đơn vị',
+                      value: unit,
+                      options: const ['gram', 'kg', 'quả', 'bó', 'hộp', 'chai'],
+                      onChanged: (value) => setState(() => unit = value),
+                    ),
                   ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: price,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Giá (VNĐ)',
+                        hintText: 'Ví dụ: 25000',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: InkWell(
+                      onTap: _pickExpiry,
+                      child: InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Ngày hết hạn *',
+                          suffixIcon: Icon(Icons.event_outlined),
+                        ),
+                        child: Text(
+                          expiryDate == null
+                              ? 'Chọn ngày'
+                              : _shortDate(expiryDate!),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (error != null)
+                Text(
+                  error!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.redAccent),
                 ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: price,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Giá (VNĐ)',
-                      hintText: 'Ví dụ: 25000',
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _addItem,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Thêm vào danh sách'),
+                ),
+              ),
+              if (items.isNotEmpty) ...[
+                const Divider(height: 24),
+                ...items.asMap().entries.map(
+                  (entry) => ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      radius: 14,
+                      child: Text('${entry.key + 1}'),
+                    ),
+                    title: Text(entry.value.normalizedName),
+                    subtitle: Text(
+                      '${entry.value.quantity} ${entry.value.unit} · '
+                      'HSD: ${entry.value.estimatedExpiryDate == null ? 'Chưa có' : _shortDate(entry.value.estimatedExpiryDate!)}',
+                    ),
+                    trailing: IconButton(
+                      onPressed: () =>
+                          setState(() => items.removeAt(entry.key)),
+                      icon: const Icon(Icons.close, size: 18),
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: expiry,
-                    decoration: const InputDecoration(labelText: 'Hạn dùng'),
-                    items:
-                        const [
-                              '2 ngày',
-                              '3 ngày',
-                              '7 ngày',
-                              '14 ngày',
-                              '30 ngày',
-                            ]
-                            .map(
-                              (value) => DropdownMenuItem(
-                                value: value,
-                                child: Text(value),
-                              ),
-                            )
-                            .toList(),
-                    onChanged: (value) => expiry = value ?? expiry,
-                  ),
-                ),
               ],
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _addItem,
-                icon: const Icon(Icons.add),
-                label: const Text('Thêm vào danh sách'),
-              ),
-            ),
-            if (items.isNotEmpty) ...[
-              const Divider(height: 24),
-              ...items.asMap().entries.map(
-                (entry) => ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(
-                    radius: 14,
-                    child: Text('${entry.key + 1}'),
-                  ),
-                  title: Text(entry.value.$1),
-                  subtitle: Text(entry.value.$2),
-                  trailing: IconButton(
-                    onPressed: () => setState(() => items.removeAt(entry.key)),
-                    icon: const Icon(Icons.close, size: 18),
-                  ),
-                ),
-              ),
             ],
-          ],
+          ),
         ),
       ),
     ),
@@ -1960,6 +3103,7 @@ class _ScanResults extends StatelessWidget {
   const _ScanResults({
     required this.items,
     required this.selected,
+    required this.inputOrigin,
     required this.onToggle,
     required this.onToggleAll,
     required this.onReset,
@@ -1968,12 +3112,26 @@ class _ScanResults extends StatelessWidget {
   });
   final List<ReceiptLine> items;
   final Set<int> selected;
+  final _ScanInputOrigin inputOrigin;
   final ValueChanged<int> onToggle;
   final VoidCallback onToggleAll, onReset, onConfirm;
   final ValueChanged<int> onEdit;
 
   @override
   Widget build(BuildContext context) {
+    final title = switch (inputOrigin) {
+      _ScanInputOrigin.recognizedReceipt => 'Kết quả OCR · cần kiểm tra',
+      _ScanInputOrigin.sampleTemplate => 'Dữ liệu mẫu · không phải OCR',
+      _ScanInputOrigin.manualEntry => 'Thực phẩm nhập thủ công',
+    };
+    final description = switch (inputOrigin) {
+      _ScanInputOrigin.recognizedReceipt =>
+        'OCR có thể đọc sai; hãy rà soát trước khi lưu.',
+      _ScanInputOrigin.sampleTemplate =>
+        'Danh sách minh họa, không đại diện hóa đơn thật.',
+      _ScanInputOrigin.manualEntry =>
+        'Kiểm tra thông tin bạn vừa nhập trước khi lưu.',
+    };
     final total = selected.fold<int>(
       0,
       (sum, index) => sum + items[index].totalPriceVnd,
@@ -1982,158 +3140,240 @@ class _ScanResults extends StatelessWidget {
       RegExp(r'\B(?=(\d{3})+(?!\d))'),
       (_) => '.',
     );
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Kết quả quét',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w900,
-                          color: _ink,
-                        ),
-                      ),
-                      Text(
-                        'Đã chuẩn bị ${items.length} mặt hàng',
-                        style: const TextStyle(fontSize: 11, color: _muted),
-                      ),
-                    ],
-                  ),
-                ),
-                TextButton(
-                  onPressed: onToggleAll,
-                  child: Text(
-                    selected.length == items.length
-                        ? 'Bỏ chọn tất cả'
-                        : 'Chọn tất cả',
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F3F5),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Text(
-                    '${selected.length}/${items.length}',
-                    style: const TextStyle(fontSize: 11, color: _muted),
-                  ),
-                ),
-              ],
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 390;
+        final selectionCount = Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF1F3F5),
+            borderRadius: BorderRadius.circular(14),
           ),
-          const Divider(height: 1),
-          ...items.asMap().entries.map((entry) {
-            final checked = selected.contains(entry.key);
-            return InkWell(
-              onTap: () => onToggle(entry.key),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 13,
-                ),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Color(0xFFF0F1F3))),
-                ),
-                child: Row(
-                  children: [
-                    Checkbox(
-                      value: checked,
-                      onChanged: (_) => onToggle(entry.key),
-                      activeColor: _green,
-                    ),
-                    const SizedBox(width: 5),
-                    Expanded(
-                      child: Column(
+          child: Text(
+            '${selected.length}/${items.length}',
+            style: const TextStyle(fontSize: 11, color: _muted),
+          ),
+        );
+        final titleBlock = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+                color: _ink,
+              ),
+            ),
+            Text(
+              description,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, color: _muted),
+            ),
+          ],
+        );
+        final toggleAll = TextButton(
+          onPressed: onToggleAll,
+          child: Text(
+            selected.length == items.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả',
+          ),
+        );
+        return Card(
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(14),
+                child: compact
+                    ? Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            entry.value.normalizedName,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                              color: _ink,
-                            ),
+                          Row(
+                            children: [
+                              Expanded(child: titleBlock),
+                              const SizedBox(width: 8),
+                              selectionCount,
+                            ],
                           ),
-                          Text(
-                            '${entry.value.quantity == entry.value.quantity.roundToDouble() ? entry.value.quantity.toInt() : entry.value.quantity} ${entry.value.unit} · HSD ${entry.value.estimatedExpiryDate == null ? 'chưa rõ' : _shortDate(entry.value.estimatedExpiryDate!)} · ${(entry.value.confidence * 100).round()}%',
-                            style: const TextStyle(fontSize: 11, color: _muted),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: toggleAll,
                           ),
                         ],
+                      )
+                    : Row(
+                        children: [
+                          Expanded(child: titleBlock),
+                          toggleAll,
+                          selectionCount,
+                        ],
+                      ),
+              ),
+              const Divider(height: 1),
+              ...items.asMap().entries.map((entry) {
+                final checked = selected.contains(entry.key);
+                return InkWell(
+                  onTap: () => onToggle(entry.key),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 13,
+                    ),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: Color(0xFFF0F1F3)),
                       ),
                     ),
-                    Column(
+                    child: Row(
                       children: [
-                        Text(
-                          '${entry.value.totalPriceVnd.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => '.')}đ',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF475467),
+                        Checkbox(
+                          value: checked,
+                          onChanged: (_) => onToggle(entry.key),
+                          activeColor: _green,
+                        ),
+                        const SizedBox(width: 5),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                entry.value.normalizedName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                  color: _ink,
+                                ),
+                              ),
+                              Text(
+                                '${entry.value.quantity == entry.value.quantity.roundToDouble() ? entry.value.quantity.toInt() : entry.value.quantity} ${entry.value.unit} · HSD ${entry.value.estimatedExpiryDate == null ? 'chưa rõ' : _shortDate(entry.value.estimatedExpiryDate!)} · ${(entry.value.confidence * 100).round()}%',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: _muted,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        IconButton(
-                          tooltip: 'Sửa kết quả OCR',
-                          onPressed: () => onEdit(entry.key),
-                          icon: const Icon(Icons.edit_outlined, size: 18),
+                        SizedBox(
+                          width: compact ? 76 : 96,
+                          child: Column(
+                            children: [
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  '${entry.value.totalPriceVnd.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => '.')}đ',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF475467),
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Sửa thông tin mặt hàng',
+                                onPressed: () => onEdit(entry.key),
+                                icon: const Icon(Icons.edit_outlined, size: 18),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
-            );
-          }),
-          Padding(
-            padding: const EdgeInsets.all(15),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Tổng giá trị đã chọn',
-                        style: TextStyle(fontSize: 10, color: _muted),
-                      ),
-                      Text(
-                        '${formattedTotal.isEmpty ? '0' : formattedTotal}đ',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                          color: _green,
-                        ),
-                      ),
-                    ],
                   ),
-                ),
-                OutlinedButton(
-                  onPressed: onReset,
-                  child: const Text('Quét lại'),
-                ),
-                const SizedBox(width: 8),
-                FilledButton.icon(
-                  onPressed: selected.isEmpty ? null : onConfirm,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Thêm vào tủ'),
-                ),
-              ],
-            ),
+                );
+              }),
+              Padding(
+                padding: const EdgeInsets.all(14),
+                child: compact
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Tổng giá trị đã chọn',
+                                style: TextStyle(fontSize: 10, color: _muted),
+                              ),
+                              Text(
+                                '${formattedTotal.isEmpty ? '0' : formattedTotal}đ',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                  color: _green,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: onReset,
+                                  child: const Text('Quét lại'),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                flex: 2,
+                                child: FilledButton.icon(
+                                  onPressed: selected.isEmpty
+                                      ? null
+                                      : onConfirm,
+                                  icon: const Icon(Icons.add),
+                                  label: const Text('Thêm vào tủ'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Tổng giá trị đã chọn',
+                                  style: TextStyle(fontSize: 10, color: _muted),
+                                ),
+                                Text(
+                                  '${formattedTotal.isEmpty ? '0' : formattedTotal}đ',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w900,
+                                    color: _green,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          OutlinedButton(
+                            onPressed: onReset,
+                            child: const Text('Quét lại'),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton.icon(
+                            onPressed: selected.isEmpty ? null : onConfirm,
+                            icon: const Icon(Icons.add),
+                            label: const Text('Thêm vào tủ'),
+                          ),
+                        ],
+                      ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -2263,67 +3503,7 @@ class _EditReceiptLineDialogState extends State<_EditReceiptLineDialog> {
   );
 }
 
-class _Store extends StatelessWidget {
-  const _Store(this.icon, this.name);
-  final IconData icon;
-  final String name;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 7),
-    child: Row(
-      children: [
-        Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: const Color(0xFFE8FBF4),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, color: _green, size: 19),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          name,
-          style: const TextStyle(fontWeight: FontWeight.w600, color: _ink),
-        ),
-      ],
-    ),
-  );
-}
-
-class _RecentScan extends StatelessWidget {
-  const _RecentScan(this.name, this.date, this.price);
-  final String name, date, price;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 10),
-    child: Row(
-      children: [
-        const Icon(Icons.receipt_long_outlined, color: Colors.orange),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                name,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: _ink,
-                ),
-              ),
-              Text(date, style: const TextStyle(fontSize: 11, color: _muted)),
-            ],
-          ),
-        ),
-        Text(
-          price,
-          style: const TextStyle(fontWeight: FontWeight.w700, color: _ink),
-        ),
-      ],
-    ),
-  );
-}
+const recipeCatalog = _RecipesScreenState.catalog;
 
 class RecipesScreen extends StatefulWidget {
   const RecipesScreen({super.key});
@@ -2334,326 +3514,671 @@ class RecipesScreen extends StatefulWidget {
 class _RecipesScreenState extends State<RecipesScreen> {
   int category = 0;
   String query = '';
-  final recipes = const [
-    (
-      'Mì cay trứng lòng đào',
-      '15 phút',
-      'Dễ',
-      '90% có sẵn',
-      10,
-      'Mì · Trứng gà · Hành lá · Nước mắm',
+  final recipes = recipeCatalog;
+  static const catalog = [
+    RecipeCatalogItem(
+      id: 'spicy-egg-noodles',
+      name: 'Mì cay trứng lòng đào',
+      durationMinutes: 15,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 10,
+      ingredients: ['Mì', 'Trứng gà', 'Hành lá', 'Nước mắm'],
+      categories: {RecipeCategory.breakfast},
+      diets: {DietKind.pescatarian},
     ),
-    (
-      'Canh rau muống nấu tôm',
-      '15 phút',
-      'Dễ',
-      '100% có sẵn',
-      11,
-      'Rau muống · Tôm sú · Hành lá',
+    RecipeCatalogItem(
+      id: 'water-spinach-shrimp-soup',
+      name: 'Canh rau muống nấu tôm',
+      durationMinutes: 15,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 11,
+      ingredients: ['Rau muống', 'Tôm sú', 'Hành lá'],
+      categories: {RecipeCategory.summer},
+      vegetableCentric: true,
+      diets: {
+        DietKind.pescatarian,
+        DietKind.vegetableForward,
+        DietKind.lowCalorie,
+        DietKind.highProtein,
+        DietKind.noEgg,
+        DietKind.lowerCarb,
+      },
     ),
-    (
-      'Bò xào cải thảo',
-      '20 phút',
-      'Dễ',
-      '80% có sẵn',
-      12,
-      'Thịt bò Mỹ · Cải thảo · Dưa leo',
+    RecipeCatalogItem(
+      id: 'beef-napa-cabbage-stir-fry',
+      name: 'Bò xào cải thảo',
+      durationMinutes: 20,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 12,
+      ingredients: ['Thịt bò Mỹ', 'Cải thảo', 'Dưa leo'],
+      categories: {RecipeCategory.dinner},
+      vegetableCentric: true,
+      diets: {
+        DietKind.vegetableForward,
+        DietKind.highProtein,
+        DietKind.meatNoFish,
+        DietKind.noEgg,
+        DietKind.lowerCarb,
+      },
     ),
-    (
-      'Bánh mì ốp la trứng gà',
-      '10 phút',
-      'Dễ',
-      '75% có sẵn',
-      13,
-      'Trứng gà · Bánh mì · Hành lá',
+    RecipeCatalogItem(
+      id: 'egg-banh-mi',
+      name: 'Bánh mì ốp la trứng gà',
+      durationMinutes: 10,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 13,
+      ingredients: ['Trứng gà', 'Bánh mì', 'Hành lá'],
+      categories: {RecipeCategory.breakfast},
+      diets: {
+        DietKind.vegetarian,
+        DietKind.pescatarian,
+        DietKind.meatNoFish,
+        DietKind.highProtein,
+      },
     ),
-    (
-      'Cá basa kho tiêu',
-      '25 phút',
-      'Vừa',
-      '90% có sẵn',
-      14,
-      'Cá basa fillet · Nước mắm · Hành lá',
+    RecipeCatalogItem(
+      id: 'pepper-braised-basa',
+      name: 'Cá basa kho tiêu',
+      durationMinutes: 25,
+      difficulty: RecipeDifficulty.medium,
+      imageIndex: 14,
+      ingredients: ['Cá basa fillet', 'Nước mắm', 'Hành lá'],
+      categories: {RecipeCategory.dinner},
+      diets: {
+        DietKind.pescatarian,
+        DietKind.highProtein,
+        DietKind.noEgg,
+        DietKind.lowerCarb,
+      },
     ),
-    (
-      'Salad cá thu dầu mè',
-      '5 phút',
-      'Dễ',
-      '90% có sẵn',
-      15,
-      'Cá chua · Dưa leo · Hành lá',
+    RecipeCatalogItem(
+      id: 'mackerel-sesame-salad',
+      name: 'Salad cá thu dầu mè',
+      durationMinutes: 5,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 15,
+      ingredients: ['Cá thu', 'Dưa leo', 'Hành lá'],
+      categories: {RecipeCategory.summer},
+      vegetableCentric: true,
+      diets: {
+        DietKind.pescatarian,
+        DietKind.vegetableForward,
+        DietKind.lowCalorie,
+        DietKind.highProtein,
+        DietKind.noEgg,
+        DietKind.lowerCarb,
+      },
     ),
-    (
-      'Đậu hũ sốt cà chua',
-      '20 phút',
-      'Dễ',
-      '100% có sẵn',
-      4,
-      'Đậu hũ · Cà chua · Hành lá',
+    RecipeCatalogItem(
+      id: 'tofu-tomato-sauce',
+      name: 'Đậu hũ sốt cà chua',
+      durationMinutes: 20,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 4,
+      ingredients: ['Đậu hũ', 'Cà chua', 'Hành lá'],
+      categories: {RecipeCategory.summer, RecipeCategory.dinner},
+      vegetableCentric: true,
+      diets: {
+        DietKind.vegetarian,
+        DietKind.vegan,
+        DietKind.pescatarian,
+        DietKind.meatNoFish,
+        DietKind.vegetableForward,
+        DietKind.lowCalorie,
+        DietKind.highProtein,
+        DietKind.noEgg,
+        DietKind.lowerCarb,
+      },
     ),
-    (
-      'Phở bò tái',
-      '45 phút',
-      'Khó',
-      '60% có sẵn',
-      2,
-      'Thịt bò Mỹ · Bánh phở · Hành lá',
+    RecipeCatalogItem(
+      id: 'pho-bo-tai',
+      name: 'Phở bò tái',
+      durationMinutes: 45,
+      difficulty: RecipeDifficulty.hard,
+      imageIndex: 2,
+      ingredients: ['Thịt bò Mỹ', 'Bánh phở', 'Hành lá'],
+      categories: {RecipeCategory.breakfast},
+      diets: {DietKind.meatNoFish, DietKind.highProtein, DietKind.noEgg},
+    ),
+    RecipeCatalogItem(
+      id: 'chicken-vegetable-stir-fry',
+      name: 'Ức gà xào bông cải',
+      durationMinutes: 25,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 12,
+      ingredients: ['Ức gà', 'Bông cải xanh', 'Cà rốt'],
+      categories: {RecipeCategory.dinner},
+      vegetableCentric: true,
+      diets: {
+        DietKind.meatNoFish,
+        DietKind.vegetableForward,
+        DietKind.highProtein,
+        DietKind.noEgg,
+        DietKind.lowerCarb,
+      },
+    ),
+    RecipeCatalogItem(
+      id: 'salmon-cucumber-salad',
+      name: 'Salad cá hồi dưa leo',
+      durationMinutes: 20,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 15,
+      ingredients: ['Cá hồi', 'Dưa leo', 'Cà chua', 'Xà lách'],
+      categories: {RecipeCategory.summer},
+      vegetableCentric: true,
+      diets: {
+        DietKind.pescatarian,
+        DietKind.vegetableForward,
+        DietKind.lowCalorie,
+        DietKind.highProtein,
+        DietKind.noEgg,
+        DietKind.lowerCarb,
+      },
+    ),
+    RecipeCatalogItem(
+      id: 'tofu-mushroom-stir-fry',
+      name: 'Đậu hũ xào nấm',
+      durationMinutes: 20,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 4,
+      ingredients: ['Đậu hũ', 'Nấm đùi gà', 'Hành lá'],
+      categories: {RecipeCategory.dinner},
+      vegetableCentric: true,
+      diets: {
+        DietKind.vegetarian,
+        DietKind.vegan,
+        DietKind.pescatarian,
+        DietKind.meatNoFish,
+        DietKind.vegetableForward,
+        DietKind.lowCalorie,
+        DietKind.highProtein,
+        DietKind.noEgg,
+        DietKind.lowerCarb,
+      },
+    ),
+    RecipeCatalogItem(
+      id: 'pumpkin-tofu-soup',
+      name: 'Canh bí đỏ đậu hũ',
+      durationMinutes: 25,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 4,
+      ingredients: ['Bí đỏ', 'Đậu hũ', 'Hành lá'],
+      categories: {RecipeCategory.dinner},
+      vegetableCentric: true,
+      diets: {
+        DietKind.vegetarian,
+        DietKind.vegan,
+        DietKind.pescatarian,
+        DietKind.meatNoFish,
+        DietKind.vegetableForward,
+        DietKind.lowCalorie,
+        DietKind.noEgg,
+      },
+    ),
+    RecipeCatalogItem(
+      id: 'egg-tomato-stir-fry',
+      name: 'Trứng xào cà chua',
+      durationMinutes: 15,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 13,
+      ingredients: ['Trứng gà', 'Cà chua', 'Hành lá'],
+      categories: {RecipeCategory.breakfast},
+      diets: {
+        DietKind.vegetarian,
+        DietKind.pescatarian,
+        DietKind.meatNoFish,
+        DietKind.highProtein,
+        DietKind.lowerCarb,
+      },
+    ),
+    RecipeCatalogItem(
+      id: 'beef-broccoli',
+      name: 'Bò xào bông cải xanh',
+      durationMinutes: 25,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 12,
+      ingredients: ['Thịt bò', 'Bông cải xanh', 'Tỏi'],
+      categories: {RecipeCategory.dinner},
+      vegetableCentric: true,
+      diets: {
+        DietKind.meatNoFish,
+        DietKind.vegetableForward,
+        DietKind.highProtein,
+        DietKind.noEgg,
+        DietKind.lowerCarb,
+      },
+    ),
+    RecipeCatalogItem(
+      id: 'shrimp-vegetable-soup',
+      name: 'Canh tôm cải xanh',
+      durationMinutes: 20,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 11,
+      ingredients: ['Tôm sú', 'Cải xanh', 'Hành lá'],
+      categories: {RecipeCategory.dinner},
+      vegetableCentric: true,
+      diets: {
+        DietKind.pescatarian,
+        DietKind.vegetableForward,
+        DietKind.lowCalorie,
+        DietKind.highProtein,
+        DietKind.noEgg,
+        DietKind.lowerCarb,
+      },
+    ),
+    RecipeCatalogItem(
+      id: 'oat-banana-bowl',
+      name: 'Yến mạch chuối sữa chua',
+      durationMinutes: 10,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 13,
+      ingredients: ['Yến mạch', 'Chuối', 'Sữa chua'],
+      categories: {RecipeCategory.breakfast},
+      diets: {
+        DietKind.vegetarian,
+        DietKind.pescatarian,
+        DietKind.meatNoFish,
+        DietKind.noEgg,
+      },
+    ),
+    RecipeCatalogItem(
+      id: 'banana-oat-soy-bowl',
+      name: 'Yến mạch chuối sữa đậu nành',
+      durationMinutes: 10,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 13,
+      ingredients: ['Yến mạch', 'Chuối', 'Sữa đậu nành'],
+      categories: {RecipeCategory.breakfast},
+      diets: {
+        DietKind.vegetarian,
+        DietKind.vegan,
+        DietKind.pescatarian,
+        DietKind.meatNoFish,
+        DietKind.noEgg,
+      },
+    ),
+    RecipeCatalogItem(
+      id: 'rice-chicken-cucumber',
+      name: 'Cơm gạo lứt gà dưa leo',
+      durationMinutes: 30,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 12,
+      ingredients: ['Gạo lứt', 'Ức gà', 'Dưa leo'],
+      categories: {RecipeCategory.dinner},
+      diets: {DietKind.meatNoFish, DietKind.highProtein, DietKind.noEgg},
+    ),
+    RecipeCatalogItem(
+      id: 'mixed-vegetable-stir-fry',
+      name: 'Rau củ xào nấm',
+      durationMinutes: 20,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 4,
+      ingredients: ['Bông cải xanh', 'Cà rốt', 'Nấm đùi gà'],
+      categories: {RecipeCategory.dinner},
+      vegetableCentric: true,
+      diets: {
+        DietKind.vegetarian,
+        DietKind.vegan,
+        DietKind.pescatarian,
+        DietKind.meatNoFish,
+        DietKind.vegetableForward,
+        DietKind.lowCalorie,
+        DietKind.noEgg,
+        DietKind.lowerCarb,
+      },
+    ),
+    RecipeCatalogItem(
+      id: 'tuna-tomato-salad',
+      name: 'Salad cá ngừ cà chua',
+      durationMinutes: 15,
+      difficulty: RecipeDifficulty.easy,
+      imageIndex: 15,
+      ingredients: ['Cá ngừ', 'Cà chua', 'Xà lách'],
+      categories: {RecipeCategory.summer},
+      vegetableCentric: true,
+      diets: {
+        DietKind.pescatarian,
+        DietKind.vegetableForward,
+        DietKind.lowCalorie,
+        DietKind.highProtein,
+        DietKind.noEgg,
+        DietKind.lowerCarb,
+      },
     ),
   ];
 
   @override
-  Widget build(BuildContext context) {
-    final filteredRecipes = recipes.where((recipe) {
-      final detail = RecipeDetailData.fromSummary(
-        name: recipe.$1,
-        time: recipe.$2,
-        level: recipe.$3,
-        match: recipe.$4,
-        image: recipe.$5,
-        ingredientsText: recipe.$6,
-      );
-      final matchesSearch =
-          query.trim().isEmpty ||
-          detail.name.toLowerCase().contains(query.trim().toLowerCase()) ||
-          detail.ingredients.any(
-            (item) =>
-                item.name.toLowerCase().contains(query.trim().toLowerCase()),
-          );
-      final matchesCategory = switch (category) {
-        1 => recipe.$5 == 11 || recipe.$5 == 15 || recipe.$5 == 4,
-        2 => recipe.$5 == 10 || recipe.$5 == 13 || recipe.$5 == 2,
-        3 => recipe.$5 == 12 || recipe.$5 == 14 || recipe.$5 == 4,
-        _ => true,
-      };
-      return matchesSearch && matchesCategory;
-    }).toList();
-    return Column(
-      children: [
-        const BrandHeader(title: 'Gợi ý món ăn'),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.all(14),
-            children: [
-              TextField(
-                onChanged: (value) => setState(() => query = value),
-                decoration: InputDecoration(
-                  hintText: 'Tìm món ăn...',
-                  prefixIcon: const Icon(Icons.search, size: 19),
-                  filled: true,
-                  fillColor: const Color(0xFFF1F3F5),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.all(13),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE7FAF3),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Có ${recipes.length} món phù hợp',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: _ink,
+  void initState() {
+    super.initState();
+    unawaited(refreshPreferredDiet());
+  }
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<DietKind>(
+    valueListenable: preferredDiet,
+    builder: (context, selectedDiet, _) => ValueListenableBuilder<int>(
+      valueListenable: inventoryRevision,
+      builder: (context, _, _) {
+        final suitableRecipes = recipes
+            .where(
+              (recipe) =>
+                  selectedDiet == DietKind.normal ||
+                  recipe.diets.contains(selectedDiet),
+            )
+            .toList();
+        final activeCategory = switch (category) {
+          1 => RecipeCategory.summer,
+          2 => RecipeCategory.breakfast,
+          3 => RecipeCategory.dinner,
+          _ => null,
+        };
+        final availableRecipeCount = suitableRecipes.where((recipe) {
+          final detail = recipe.toDetailData();
+          final availableCount = detail.ingredients
+              .where((ingredient) => ingredient.available)
+              .length;
+          return detail.ingredients.isNotEmpty &&
+              availableCount * 2 >= detail.ingredients.length;
+        }).length;
+        final filteredRecipes =
+            suitableRecipes.where((recipe) {
+              final detail = recipe.toDetailData();
+              final matchesSearch =
+                  query.trim().isEmpty ||
+                  detail.name.toLowerCase().contains(
+                    query.trim().toLowerCase(),
+                  ) ||
+                  detail.ingredients.any(
+                    (item) => item.name.toLowerCase().contains(
+                      query.trim().toLowerCase(),
+                    ),
+                  );
+              final matchesCategory =
+                  activeCategory == null ||
+                  recipe.categories.contains(activeCategory);
+              return matchesSearch && matchesCategory;
+            }).toList()..sort((a, b) {
+              final vegetablePriority = (b.vegetableCentric ? 1 : 0).compareTo(
+                a.vegetableCentric ? 1 : 0,
+              );
+              if (vegetablePriority != 0) return vegetablePriority;
+              final aReady = a
+                  .toDetailData()
+                  .ingredients
+                  .where((ingredient) => ingredient.available)
+                  .length;
+              final bReady = b
+                  .toDetailData()
+                  .ingredients
+                  .where((ingredient) => ingredient.available)
+                  .length;
+              return bReady.compareTo(aReady);
+            });
+        return Column(
+          children: [
+            const BrandHeader(title: 'Gợi ý món ăn'),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(14),
+                children: [
+                  Card(
+                    color: const Color(0xFFE7FAF3),
+                    child: ListTile(
+                      leading: const Icon(Icons.calendar_month, color: _green),
+                      title: const Text(
+                        'Thực đơn ngày & tuần',
+                        style: TextStyle(fontWeight: FontWeight.w800),
                       ),
-                    ),
-                    SizedBox(height: 3),
-                    Text(
-                      'Ưu tiên món có từ 50% nguyên liệu trong tủ',
-                      style: TextStyle(fontSize: 10, color: _muted),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                height: 38,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: ['Tất cả', 'Mùa hè', 'Bữa sáng', 'Bữa tối']
-                      .asMap()
-                      .entries
-                      .map(
-                        (entry) => Padding(
-                          padding: const EdgeInsets.only(right: 7),
-                          child: ChoiceChip(
-                            label: Text(entry.value),
-                            selected: category == entry.key,
-                            onSelected: (_) =>
-                                setState(() => category = entry.key),
-                            selectedColor: _green,
-                            labelStyle: TextStyle(
-                              fontSize: 11,
-                              color: category == entry.key
-                                  ? Colors.white
-                                  : _ink,
-                            ),
-                            showCheckmark: false,
+                      subtitle: const Text(
+                        '3 bữa mỗi ngày · Gợi ý theo chế độ ăn · Đi chợ',
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => MealPlanScreen(
+                            catalog: [...recipes, ...menuSupportingRecipes],
+                            onOpenShopping: (day, week) =>
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => Scaffold(
+                                      appBar: AppBar(
+                                        title: const Text('Đi chợ từ thực đơn'),
+                                      ),
+                                      body: ShoppingScreen(
+                                        menuDay: day,
+                                        menuWeekStart: week,
+                                      ),
+                                    ),
+                                  ),
+                                ),
                           ),
                         ),
-                      )
-                      .toList(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              if (filteredRecipes.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 40),
-                  child: Center(
-                    child: Text(
-                      'Không tìm thấy món phù hợp',
-                      style: TextStyle(color: _muted),
+                      ),
                     ),
                   ),
-                ),
-              ...filteredRecipes.map(
-                (r) => _RecipeCard(
-                  name: r.$1,
-                  time: r.$2,
-                  level: r.$3,
-                  match: r.$4,
-                  image: r.$5,
-                  ingredients: r.$6,
-                ),
-              ),
-              Card(
-                color: const Color(0xFFFFFBEB),
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Icon(Icons.lightbulb_outline, color: Colors.amber),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Mẹo nấu ăn thông minh',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                color: _ink,
+                  const SizedBox(height: 10),
+                  TextField(
+                    key: tutorialTargetKeys[2],
+                    onChanged: (value) => setState(() => query = value),
+                    decoration: InputDecoration(
+                      hintText: 'Tìm món ăn...',
+                      prefixIcon: const Icon(Icons.search, size: 19),
+                      filled: true,
+                      fillColor: const Color(0xFFF1F3F5),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    key: tutorialSectionKeys[2][0],
+                    padding: const EdgeInsets.all(13),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE7FAF3),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          selectedDiet == DietKind.normal
+                              ? 'Có $availableRecipeCount món có từ 50% nguyên liệu sẵn'
+                              : '${suitableRecipes.length} món phù hợp · ${selectedDiet.label}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: _ink,
+                          ),
+                        ),
+                        SizedBox(height: 3),
+                        Text(
+                          selectedDiet == DietKind.normal
+                              ? 'Tỉ lệ được tính theo tủ lạnh gia đình đang chọn.'
+                              : '$availableRecipeCount món có từ 50% nguyên liệu sẵn. Đổi chế độ ăn trong Hồ sơ.',
+                          style: TextStyle(fontSize: 10, color: _muted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    key: tutorialSectionKeys[2][1],
+                    height: 38,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: ['Tất cả', 'Mùa hè', 'Bữa sáng', 'Bữa tối']
+                          .asMap()
+                          .entries
+                          .map(
+                            (entry) => Padding(
+                              padding: const EdgeInsets.only(right: 7),
+                              child: ChoiceChip(
+                                label: Text(entry.value),
+                                selected: category == entry.key,
+                                onSelected: (_) =>
+                                    setState(() => category = entry.key),
+                                selectedColor: _green,
+                                labelStyle: TextStyle(
+                                  fontSize: 11,
+                                  color: category == entry.key
+                                      ? Colors.white
+                                      : _ink,
+                                ),
+                                showCheckmark: false,
                               ),
                             ),
-                            SizedBox(height: 4),
-                            Text(
-                              'Ưu tiên món dùng nguyên liệu sắp hết hạn để giảm lãng phí thực phẩm.',
-                              style: TextStyle(fontSize: 11, color: _muted),
-                            ),
-                          ],
+                          )
+                          .toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (filteredRecipes.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 40),
+                      child: Center(
+                        child: Text(
+                          'Chưa có món phù hợp với bộ lọc này',
+                          style: TextStyle(color: _muted),
                         ),
                       ),
-                    ],
+                    ),
+                  ...filteredRecipes.map(
+                    (recipe) => _RecipeCard(
+                      key: ValueKey(recipe.id),
+                      recipe: recipe,
+                      selectedDiet: selectedDiet,
+                    ),
                   ),
-                ),
+                  Card(
+                    color: const Color(0xFFFFFBEB),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Icon(Icons.lightbulb_outline, color: Colors.amber),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Mẹo nấu ăn thông minh',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    color: _ink,
+                                  ),
+                                ),
+                                SizedBox(height: 4),
+                                Text(
+                                  'Ưu tiên món dùng nguyên liệu sắp hết hạn để giảm lãng phí thực phẩm.',
+                                  style: TextStyle(fontSize: 11, color: _muted),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                ],
               ),
-              const SizedBox(height: 40),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+            ),
+          ],
+        );
+      },
+    ),
+  );
 }
 
 class _RecipeCard extends StatelessWidget {
   const _RecipeCard({
-    required this.name,
-    required this.time,
-    required this.level,
-    required this.match,
-    required this.image,
-    required this.ingredients,
+    super.key,
+    required this.recipe,
+    required this.selectedDiet,
   });
-  final String name, time, level, match, ingredients;
-  final int image;
+  final RecipeCatalogItem recipe;
+  final DietKind selectedDiet;
+
   @override
-  Widget build(BuildContext context) => Card(
-    margin: const EdgeInsets.only(bottom: 12),
-    clipBehavior: Clip.antiAlias,
-    child: InkWell(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => RecipeDetailScreen(
-            recipe: RecipeDetailData.fromSummary(
-              name: name,
-              time: time,
-              level: level,
-              match: match,
-              image: image,
-              ingredientsText: ingredients,
-            ),
-          ),
+  Widget build(BuildContext context) {
+    final detail = recipe.toDetailData();
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => RecipeDetailScreen(recipe: detail)),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Stack(
-            children: [
-              Image.asset(
-                '$_assetRoot${image == 0 ? 'search-image' : 'search-image($image)'}',
-                height: 158,
-                width: double.infinity,
-                fit: BoxFit.cover,
-              ),
-              Positioned(
-                top: 9,
-                left: 9,
-                child: _TinyBadge('$time  ·  $level', Colors.white, _ink),
-              ),
-              Positioned(
-                top: 9,
-                right: 9,
-                child: _TinyBadge(match, _green, Colors.white),
-              ),
-            ],
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Stack(
               children: [
-                Text(
-                  name,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15,
-                    color: _ink,
+                RecipeVisual(
+                  name: recipe.name,
+                  imageIndex: recipe.imageIndex,
+                  height: 158,
+                  width: double.infinity,
+                ),
+                Positioned(
+                  top: 9,
+                  left: 9,
+                  child: _TinyBadge(
+                    '${recipe.timeLabel}  ·  ${recipe.difficultyLabel}',
+                    Colors.white,
+                    _ink,
                   ),
                 ),
-                const SizedBox(height: 5),
-                const Text(
-                  'Món ăn gợi ý từ những nguyên liệu đang có trong tủ lạnh của bạn.',
-                  style: TextStyle(fontSize: 10, color: _muted),
-                ),
-                const SizedBox(height: 9),
-                Wrap(
-                  spacing: 5,
-                  runSpacing: 5,
-                  children: ingredients
-                      .split(' · ')
-                      .map(
-                        (x) => _TinyBadge(x, const Color(0xFFE8FBF4), _green),
-                      )
-                      .toList(),
+                Positioned(
+                  top: 9,
+                  right: 9,
+                  child: _TinyBadge(detail.match, _green, Colors.white),
                 ),
               ],
             ),
-          ),
-        ],
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    recipe.name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                      color: _ink,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    selectedDiet == DietKind.normal
+                        ? 'Món ăn gợi ý từ những nguyên liệu đang có trong tủ lạnh của bạn.'
+                        : 'Phù hợp với ${selectedDiet.label.toLowerCase()} · xem nguyên liệu trước khi nấu.',
+                    style: const TextStyle(fontSize: 10, color: _muted),
+                  ),
+                  const SizedBox(height: 9),
+                  Wrap(
+                    spacing: 5,
+                    runSpacing: 5,
+                    children: recipe.ingredients
+                        .map(
+                          (x) => _TinyBadge(x, const Color(0xFFE8FBF4), _green),
+                        )
+                        .toList(),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _TinyBadge extends StatelessWidget {
@@ -2675,71 +4200,78 @@ class _TinyBadge extends StatelessWidget {
 }
 
 class ShoppingScreen extends StatefulWidget {
-  const ShoppingScreen({super.key});
+  const ShoppingScreen({super.key, this.menuDay, this.menuWeekStart});
+  final DateTime? menuDay;
+  final DateTime? menuWeekStart;
   @override
   State<ShoppingScreen> createState() => _ShoppingScreenState();
 }
 
 class _ShoppingScreenState extends State<ShoppingScreen> {
-  final checked = <int>{4, 6};
+  final checked = shoppingChecked;
   int selectedCategory = 0;
   int _shoppingMutationRevision = 0;
-  final items = <ShoppingSummary>[
-    (
-      'Thịt gà ta',
-      '1 kg · Mua con gà ta nguyên con, làm sẵn',
-      'Cần mua gấp',
-      'Mẹ',
-      'Thịt cá',
-    ),
-    (
-      'Dứa',
-      '1 quả · Dứa chín vàng, để nấu canh chua',
-      'Bình thường',
-      'Mẹ',
-      'Rau củ',
-    ),
-    (
-      'Bánh phở',
-      '2 gói · Bánh phở tươi loại dày',
-      'Cần mua gấp',
-      'Bố',
-      'Đồ khô',
-    ),
-    ('Tỏi', '200 gram · Tỏi Lý Sơn', 'Bình thường', 'Bố', 'Rau củ'),
-    (
-      'Sữa chua Vinamilk',
-      '1 lốc · Sữa chua có đường',
-      'Có cũng được',
-      'Con (Minh)',
-      'Khác',
-    ),
-    (
-      'Đậu phộng',
-      '200 gram · Đậu phộng rang sẵn',
-      'Có cũng được',
-      'Mẹ',
-      'Đồ khô',
-    ),
-    ('Dầu hào', '1 chai · Dầu hào Maggi', 'Bình thường', 'Bố', 'Đồ khô'),
-    ('Cần tây', '2 cây · Cần tây tươi, lá xanh', 'Bình thường', 'Mẹ', 'Rau củ'),
-    (
-      'Cá hồi phi lê',
-      '2 miếng · Cá hồi Na Uy, mua ở siêu thị',
-      'Cần mua gấp',
-      'Bố',
-      'Thịt cá',
-    ),
-  ];
+  final items = shoppingItems;
 
   @override
   void initState() {
     super.initState();
+    shoppingRevision.addListener(_onExternalShoppingChange);
     unawaited(_restoreShopping());
+  }
+
+  @override
+  void dispose() {
+    shoppingRevision.removeListener(_onExternalShoppingChange);
+    super.dispose();
+  }
+
+  void _onExternalShoppingChange() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _restoreShopping() async {
     final revisionAtStart = _shoppingMutationRevision;
+    if (AppServices.configured &&
+        HouseholdService.instance.active.value != null) {
+      final householdId = HouseholdService.instance.active.value!.id;
+      try {
+        final remoteItems = await HouseholdDataRepository.instance
+            .loadShoppingItems();
+        if (!mounted ||
+            revisionAtStart != _shoppingMutationRevision ||
+            HouseholdService.instance.active.value?.id != householdId) {
+          return;
+        }
+        setState(() {
+          items
+            ..clear()
+            ..addAll(remoteItems.map((entry) => entry.item));
+          checked
+            ..clear()
+            ..addAll(
+              remoteItems
+                  .where((entry) => entry.checked)
+                  .map((entry) => entry.item.id),
+            );
+        });
+        shoppingRevision.value++;
+      } catch (_) {
+        if (!mounted ||
+            revisionAtStart != _shoppingMutationRevision ||
+            HouseholdService.instance.active.value?.id != householdId) {
+          return;
+        }
+        setState(() {
+          items.clear();
+          checked.clear();
+        });
+        shoppingRevision.value++;
+        HouseholdDataRepository.instance.syncStatus.value =
+            'Chưa tải được danh sách đi chợ. Hãy kiểm tra kết nối rồi mở lại tab.';
+      }
+      return;
+    }
     final snapshot = await restoreShopping();
     if (snapshot == null ||
         !mounted ||
@@ -2752,8 +4284,11 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
         ..addAll(snapshot.items);
       checked
         ..clear()
-        ..addAll(snapshot.checked.where((index) => index < items.length));
+        ..addAll(
+          snapshot.checked.where((id) => items.any((item) => item.id == id)),
+        );
     });
+    shoppingRevision.value++;
   }
 
   void _persistShopping() {
@@ -2767,48 +4302,75 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
       builder: (_) => const AddShoppingItemDialog(),
     );
     if (result != null && mounted) {
+      final duplicate = items.any(
+        (item) => shoppingIdentity(item) == shoppingIdentity(result),
+      );
+      if (duplicate) {
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.clearSnackBars();
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              '${result.name} đã có trong danh sách',
+              textAlign: TextAlign.center,
+            ),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        return;
+      }
       setState(() {
-        items.add(result);
+        final target = widget.menuDay ?? widget.menuWeekStart;
+        items.add(
+          target == null
+              ? result
+              : result.copyWith(menuDay: target, neededDate: target),
+        );
         selectedCategory = 0;
       });
       _shoppingMutationRevision++;
       _persistShopping();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Đã thêm ${result.$1} vào danh sách')),
+        SnackBar(
+          content: Text(
+            'Đã thêm ${result.name} vào danh sách',
+            textAlign: TextAlign.center,
+          ),
+        ),
       );
     }
   }
 
   void _deleteShoppingItem(int index) {
     final removed = items[index];
+    final wasChecked = checked.contains(removed.id);
     setState(() {
       items.removeAt(index);
-      final shiftedChecked = checked
-          .where((value) => value != index)
-          .map((value) => value > index ? value - 1 : value)
-          .toSet();
-      checked
-        ..clear()
-        ..addAll(shiftedChecked);
+      checked.remove(removed.id);
     });
     _shoppingMutationRevision++;
+    if (AppServices.configured &&
+        HouseholdService.instance.active.value != null) {
+      unawaited(
+        HouseholdDataRepository.instance
+            .deleteShoppingItem(removed)
+            .catchError(
+              (_) => HouseholdDataRepository.instance.syncStatus.value =
+                  'Chưa xóa được món khỏi danh sách chung. Hãy kiểm tra mạng và thử lại.',
+            ),
+      );
+    }
     _persistShopping();
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Đã xóa ${removed.$1}'),
+        content: Text('Đã xóa ${removed.name}', textAlign: TextAlign.center),
         action: SnackBarAction(
           label: 'Hoàn tác',
           onPressed: () {
             setState(() {
-              final shiftedChecked = checked
-                  .map((value) => value >= index ? value + 1 : value)
-                  .toSet();
-              checked
-                ..clear()
-                ..addAll(shiftedChecked);
               items.insert(index, removed);
-              checked.add(index);
+              if (wasChecked) checked.add(removed.id);
             });
             _shoppingMutationRevision++;
             _persistShopping();
@@ -2821,11 +4383,35 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
   @override
   Widget build(BuildContext context) {
     const categories = ['Tất cả', 'Rau củ', 'Thịt cá', 'Đồ khô', 'Khác'];
-    final indexedItems = items.asMap().entries.where((entry) {
-      return selectedCategory == 0 ||
-          entry.value.$5 == categories[selectedCategory];
-    }).toList();
-    final remaining = items.length - checked.length;
+    final indexedItems =
+        items.asMap().entries.where((entry) {
+          if (widget.menuWeekStart != null) {
+            final date = entry.value.menuDay ?? entry.value.neededDate;
+            if (date == null ||
+                date.isBefore(widget.menuWeekStart!) ||
+                !date.isBefore(
+                  widget.menuWeekStart!.add(const Duration(days: 7)),
+                )) {
+              return false;
+            }
+          }
+          if (widget.menuDay != null && entry.value.menuDay != widget.menuDay) {
+            return false;
+          }
+          return selectedCategory == 0 ||
+              entry.value.category == categories[selectedCategory];
+        }).toList()..sort((a, b) {
+          final done = (checked.contains(a.value.id) ? 1 : 0).compareTo(
+            checked.contains(b.value.id) ? 1 : 0,
+          );
+          if (done != 0) return done;
+          return (a.value.neededDate ?? DateTime(9999)).compareTo(
+            b.value.neededDate ?? DateTime(9999),
+          );
+        });
+    final remaining = widget.menuWeekStart == null
+        ? items.length - checked.length
+        : indexedItems.where((e) => !checked.contains(e.value.id)).length;
     return Column(
       children: [
         BrandHeader(
@@ -2836,9 +4422,9 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Row(
-                children: [
-                  Container(
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final counter = Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
                       vertical: 11,
@@ -2855,20 +4441,32 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                           size: 19,
                         ),
                         SizedBox(width: 8),
-                        Text(
-                          '$remaining món',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: _ink,
+                        Expanded(
+                          child: Text.rich(
+                            TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: '$remaining món',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    color: _ink,
+                                  ),
+                                ),
+                                const TextSpan(
+                                  text: ' cần mua',
+                                  style: TextStyle(color: _muted),
+                                ),
+                              ],
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        SizedBox(width: 5),
-                        Text('cần mua', style: TextStyle(color: _muted)),
                       ],
                     ),
-                  ),
-                  const Spacer(),
-                  FilledButton.icon(
+                  );
+                  final addButton = FilledButton.icon(
+                    key: tutorialTargetKeys[3],
                     onPressed: _showAddItemDialog,
                     icon: const Icon(Icons.add),
                     label: const Text('Thêm món'),
@@ -2881,12 +4479,32 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                  ),
-                ],
+                  );
+
+                  if (constraints.maxWidth < 390) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        counter,
+                        const SizedBox(height: 10),
+                        addButton,
+                      ],
+                    );
+                  }
+
+                  return Row(
+                    children: [
+                      Expanded(child: counter),
+                      const SizedBox(width: 12),
+                      addButton,
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 14),
               SizedBox(
-                height: 42,
+                key: tutorialSectionKeys[3][0],
+                height: 48,
                 child: ListView(
                   scrollDirection: Axis.horizontal,
                   children: categories.asMap().entries.map((entry) {
@@ -2900,21 +4518,37 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
               ),
               const SizedBox(height: 14),
               Card(
+                key: tutorialSectionKeys[3][1],
                 child: Column(
                   children: indexedItems
                       .map(
                         (e) => _ShoppingItem(
                           index: e.key,
                           item: e.value,
-                          checked: checked.contains(e.key),
+                          checked: checked.contains(e.value.id),
                           onChanged: () {
-                            setState(
-                              () => checked.contains(e.key)
-                                  ? checked.remove(e.key)
-                                  : checked.add(e.key),
-                            );
+                            final purchased = !checked.contains(e.value.id);
+                            setState(() {
+                              if (purchased) {
+                                checked.add(e.value.id);
+                              } else {
+                                checked.remove(e.value.id);
+                              }
+                            });
+                            setShoppingPurchased(e.value, purchased);
                             _shoppingMutationRevision++;
                             _persistShopping();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  purchased
+                                      ? 'Đã chuyển ${e.value.name} vào tủ lạnh'
+                                      : 'Đã bỏ trạng thái đã mua',
+                                  textAlign: TextAlign.center,
+                                ),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
                           },
                           onDelete: () => _deleteShoppingItem(e.key),
                         ),
@@ -2985,13 +4619,16 @@ class _ShoppingItem extends StatelessWidget {
   final VoidCallback onDelete;
   @override
   Widget build(BuildContext context) {
-    final urgent = item.$3 == 'Cần mua gấp';
+    final urgent = item.priority == 'Cần mua gấp';
     return InkWell(
       onTap: onChanged,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 17),
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: Color(0xFFF0F1F3))),
+        margin: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: checked ? const Color(0xFFF5F7F6) : Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFE6ECE9)),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -3006,47 +4643,89 @@ class _ShoppingItem extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          item.$1,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: checked ? _muted : _ink,
-                            decoration: checked
-                                ? TextDecoration.lineThrough
-                                : null,
-                          ),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final name = Text(
+                        item.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: checked ? _muted : _ink,
+                          decoration: checked
+                              ? TextDecoration.lineThrough
+                              : null,
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      _TinyBadge(
-                        item.$3,
+                      );
+                      final badge = _TinyBadge(
+                        item.priority,
                         urgent
                             ? const Color(0xFFFFECEE)
-                            : item.$3 == 'Bình thường'
+                            : item.priority == 'Bình thường'
                             ? const Color(0xFFFFF8E5)
                             : const Color(0xFFF1F3F5),
                         urgent
                             ? Colors.redAccent
-                            : item.$3 == 'Bình thường'
+                            : item.priority == 'Bình thường'
                             ? Colors.orange
                             : _muted,
-                      ),
-                    ],
+                      );
+                      if (constraints.maxWidth < 210 ||
+                          MediaQuery.textScalerOf(context).scale(1) >= 1.3) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [name, const SizedBox(height: 4), badge],
+                        );
+                      }
+                      return Row(
+                        children: [
+                          Flexible(child: name),
+                          const SizedBox(width: 8),
+                          badge,
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    item.$2,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 11, color: _muted),
+                    '${shoppingQuantity(item.quantity)} ${item.unit}',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: checked ? _muted : _green,
+                    ),
+                  ),
+                  Text(
+                    '${checked ? 'Đã mua' : 'Cần mua'}${item.neededDate == null ? '' : ' · Dùng từ ${item.neededDate!.day}/${item.neededDate!.month}'}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF667085),
+                    ),
                   ),
                   const SizedBox(height: 5),
+                  if (item.menuPlanId != null)
+                    TextButton.icon(
+                      icon: const Icon(Icons.calendar_month, size: 16),
+                      label: Text(
+                        shoppingMenuUses(item.note).isEmpty
+                            ? 'Xem món trong menu'
+                            : 'Nấu: ${shoppingMenuUses(item.note).first.dish}${shoppingMenuUses(item.note).length > 1 ? ' +${shoppingMenuUses(item.note).length - 1} món' : ''}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onPressed: () => showShoppingMenuSheet(context, item),
+                    ),
+                  if (item.menuPlanId == null && item.note.isNotEmpty)
+                    Text(
+                      item.note,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF667085),
+                      ),
+                    ),
                   Text(
-                    'Thêm bởi ${item.$4}',
+                    'Thêm bởi ${item.createdBy}',
                     style: const TextStyle(fontSize: 11, color: _muted),
                   ),
                 ],
@@ -3086,6 +4765,7 @@ class _AddShoppingItemDialogState extends State<AddShoppingItemDialog> {
   String category = 'Rau củ';
   String priority = 'Bình thường';
   bool showNameError = false;
+  bool showQuantityError = false;
 
   @override
   void dispose() {
@@ -3101,98 +4781,126 @@ class _AddShoppingItemDialogState extends State<AddShoppingItemDialog> {
       setState(() => showNameError = true);
       return;
     }
-    final quantity = quantityController.text.trim().isEmpty
-        ? '1'
-        : quantityController.text.trim();
+    final quantityText = quantityController.text.trim();
+    final quantity = quantityText.isEmpty
+        ? 1.0
+        : double.tryParse(quantityText.replaceAll(',', '.'));
+    if (quantity == null || quantity <= 0) {
+      setState(() => showQuantityError = true);
+      return;
+    }
     final note = noteController.text.trim();
-    Navigator.pop(context, (
-      name,
-      '$quantity $unit${note.isEmpty ? '' : ' · $note'}',
-      priority,
-      'Bạn',
-      category,
-    ));
+    Navigator.pop(
+      context,
+      ShoppingSummary(
+        householdId: HouseholdService.instance.active.value?.id,
+        name: name,
+        quantity: quantity,
+        unit: unit,
+        note: note,
+        priority: priority,
+        createdBy: 'Bạn',
+        category: category,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final maxDialogHeight =
+        (MediaQuery.sizeOf(context).height - bottomInset - 48)
+            .clamp(280.0, 760.0)
+            .toDouble();
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520, maxHeight: 760),
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(22, 20, 22, 20 + bottomInset),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Thêm món cần mua',
-                      style: TextStyle(
-                        fontSize: 21,
-                        fontWeight: FontWeight.w900,
-                        color: _ink,
-                      ),
-                    ),
-                  ),
-                  IconButton.filledTonal(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                    style: IconButton.styleFrom(
-                      backgroundColor: const Color(0xFFF3F4F6),
-                      foregroundColor: const Color(0xFF667085),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              _FormLabel('Tên món'),
-              TextField(
-                controller: nameController,
-                autofocus: true,
-                onChanged: (_) {
-                  if (showNameError) setState(() => showNameError = false);
-                },
-                decoration: _inputDecoration(
-                  'VD: Thịt gà, Rau muống...',
-                  error: showNameError ? 'Vui lòng nhập tên món' : null,
-                ),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+        constraints: BoxConstraints(maxWidth: 520, maxHeight: maxDialogHeight),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(22, 20, 22, 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        _FormLabel('Số lượng'),
-                        TextField(
-                          controller: quantityController,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
+                        const Expanded(
+                          child: Text(
+                            'Thêm món cần mua',
+                            style: TextStyle(
+                              fontSize: 21,
+                              fontWeight: FontWeight.w900,
+                              color: _ink,
+                            ),
                           ),
-                          decoration: _inputDecoration('1'),
+                        ),
+                        IconButton.filledTonal(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close),
+                          style: IconButton.styleFrom(
+                            backgroundColor: const Color(0xFFF3F4F6),
+                            foregroundColor: const Color(0xFF667085),
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _FormLabel('Đơn vị'),
-                        DropdownButtonFormField<String>(
-                          initialValue: unit,
-                          decoration: _inputDecoration(''),
-                          items:
-                              const [
+                    const SizedBox(height: 16),
+                    _FormLabel('Tên món'),
+                    TextField(
+                      controller: nameController,
+                      autofocus: true,
+                      onChanged: (_) {
+                        if (showNameError) {
+                          setState(() => showNameError = false);
+                        }
+                      },
+                      decoration: _inputDecoration(
+                        'VD: Thịt gà, Rau muống...',
+                        error: showNameError ? 'Vui lòng nhập tên món' : null,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final quantityField = Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _FormLabel('Số lượng'),
+                            TextField(
+                              controller: quantityController,
+                              onChanged: (_) {
+                                if (showQuantityError) {
+                                  setState(() => showQuantityError = false);
+                                }
+                              },
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: _inputDecoration(
+                                '1',
+                                error: showQuantityError
+                                    ? 'Nhập số lượng lớn hơn 0'
+                                    : null,
+                              ),
+                            ),
+                          ],
+                        );
+                        final unitField = Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _FormLabel('Đơn vị'),
+                            DropdownButtonFormField<String>(
+                              isExpanded: true,
+                              initialValue: unit,
+                              decoration: _inputDecoration(''),
+                              items:
+                                  const [
                                     'gói',
                                     'kg',
                                     'gram',
@@ -3202,74 +4910,102 @@ class _AddShoppingItemDialogState extends State<AddShoppingItemDialog> {
                                     'hộp',
                                     'miếng',
                                     'cây',
-                                  ]
-                                  .map(
-                                    (value) => DropdownMenuItem(
+                                  ].map((value) {
+                                    return DropdownMenuItem(
                                       value: value,
-                                      child: Text(value),
-                                    ),
-                                  )
-                                  .toList(),
-                          onChanged: (value) => setState(() => unit = value!),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              _FormLabel('Danh mục'),
-              DropdownButtonFormField<String>(
-                initialValue: category,
-                decoration: _inputDecoration(''),
-                items: const ['Rau củ', 'Thịt cá', 'Đồ khô', 'Khác']
-                    .map(
-                      (value) =>
-                          DropdownMenuItem(value: value, child: Text(value)),
-                    )
-                    .toList(),
-                onChanged: (value) => setState(() => category = value!),
-              ),
-              const SizedBox(height: 14),
-              _FormLabel('Độ ưu tiên'),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: ['Cần mua gấp', 'Bình thường', 'Có cũng được']
-                      .map(
-                        (value) => Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: ChoiceChip(
-                            label: Text(value),
-                            selected: priority == value,
-                            showCheckmark: false,
-                            selectedColor: _green,
-                            backgroundColor: const Color(0xFFF3F4F6),
-                            labelStyle: TextStyle(
-                              color: priority == value
-                                  ? Colors.white
-                                  : const Color(0xFF667085),
-                              fontWeight: FontWeight.w700,
+                                      child: Text(
+                                        value,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    );
+                                  }).toList(),
+                              onChanged: (value) {
+                                if (value != null) setState(() => unit = value);
+                              },
                             ),
-                            onSelected: (_) => setState(() => priority = value),
-                          ),
-                        ),
-                      )
-                      .toList(),
+                          ],
+                        );
+                        if (constraints.maxWidth < 340) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              quantityField,
+                              const SizedBox(height: 12),
+                              unitField,
+                            ],
+                          );
+                        }
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: quantityField),
+                            const SizedBox(width: 12),
+                            Expanded(child: unitField),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    _FormLabel('Danh mục'),
+                    DropdownButtonFormField<String>(
+                      initialValue: category,
+                      decoration: _inputDecoration(''),
+                      items: const ['Rau củ', 'Thịt cá', 'Đồ khô', 'Khác']
+                          .map(
+                            (value) => DropdownMenuItem(
+                              value: value,
+                              child: Text(value),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) => setState(() => category = value!),
+                    ),
+                    const SizedBox(height: 14),
+                    _FormLabel('Độ ưu tiên'),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: ['Cần mua gấp', 'Bình thường', 'Có cũng được']
+                            .map(
+                              (value) => Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: ChoiceChip(
+                                  label: Text(value),
+                                  selected: priority == value,
+                                  showCheckmark: false,
+                                  selectedColor: _green,
+                                  backgroundColor: const Color(0xFFF3F4F6),
+                                  labelStyle: TextStyle(
+                                    color: priority == value
+                                        ? Colors.white
+                                        : const Color(0xFF667085),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                  onSelected: (_) =>
+                                      setState(() => priority = value),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    _FormLabel('Ghi chú'),
+                    TextField(
+                      controller: noteController,
+                      minLines: 2,
+                      maxLines: 3,
+                      decoration: _inputDecoration(
+                        'VD: Mua loại tươi, chọn quả chín...',
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 14),
-              _FormLabel('Ghi chú'),
-              TextField(
-                controller: noteController,
-                minLines: 2,
-                maxLines: 3,
-                decoration: _inputDecoration(
-                  'VD: Mua loại tươi, chọn quả chín...',
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 8, 22, 20),
+              child: Row(
                 children: [
                   Expanded(
                     child: OutlinedButton(
@@ -3296,8 +5032,8 @@ class _AddShoppingItemDialogState extends State<AddShoppingItemDialog> {
                   ),
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -3340,17 +5076,17 @@ class _FormLabel extends StatelessWidget {
   );
 }
 
-class ReportsScreen extends StatelessWidget {
-  const ReportsScreen({super.key});
+// ignore: unused_element
+class _LegacyReportsScreen extends StatelessWidget {
+  // ignore: unused_element_parameter
+  const _LegacyReportsScreen({super.key});
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
       valueListenable: inventoryRevision,
       builder: (context, _, _) {
         int priceOf(FoodSummary food) {
-          final parts = food.$2.split('·');
-          final raw = parts.length > 1 ? parts.last : parts.first;
-          return int.tryParse(raw.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+          return food.priceVnd;
         }
 
         String vnd(int value) =>
@@ -3360,11 +5096,14 @@ class ReportsScreen extends StatelessWidget {
           (sum, food) => sum + priceOf(food),
         );
         final expiredValue = inventoryFoods
-            .where((food) => food.$3 == 'Hết hạn')
+            .where((food) => food.status == 'Hết hạn')
             .fold<int>(0, (sum, food) => sum + priceOf(food));
         final wastePercent = totalValue == 0
             ? 0
             : ((expiredValue / totalValue) * 100).round();
+        final pricedCount = inventoryFoods
+            .where((food) => priceOf(food) > 0)
+            .length;
         return Column(
           children: [
             const BrandHeader(),
@@ -3372,47 +5111,49 @@ class ReportsScreen extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.all(14),
                 children: [
-                  GridView.count(
-                    crossAxisCount: 2,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    mainAxisSpacing: 10,
-                    crossAxisSpacing: 10,
-                    childAspectRatio: 1.45,
-                    children: [
-                      _ReportStat(
-                        'Giá trị trong tủ hiện tại',
-                        vnd(totalValue),
-                        '${inventoryFoods.length} thực phẩm đang theo dõi',
-                        Icons.savings_outlined,
-                        Color(0xFFE8FBF4),
-                        _green,
-                      ),
-                      _ReportStat(
-                        'Giá trị đã hết hạn',
-                        vnd(expiredValue),
-                        'Cần xử lý sớm',
-                        Icons.account_balance_wallet_outlined,
-                        Color(0xFFFFEFF0),
-                        Colors.redAccent,
-                      ),
-                      _ReportStat(
-                        'Tỉ lệ lãng phí tháng này',
-                        '$wastePercent%',
-                        '${vnd(expiredValue)} / ${vnd(totalValue)}',
-                        Icons.emoji_events_outlined,
-                        Color(0xFFFFF8E5),
-                        Colors.orange,
-                      ),
-                      const _ReportStat(
-                        'Thành tựu',
-                        '6/9',
-                        'Đã mở khóa',
-                        Icons.workspace_premium_outlined,
-                        Color(0xFFFFEFF7),
-                        Colors.pinkAccent,
-                      ),
-                    ],
+                  LayoutBuilder(
+                    builder: (context, constraints) => GridView.count(
+                      crossAxisCount: 2,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      mainAxisSpacing: 10,
+                      crossAxisSpacing: 10,
+                      childAspectRatio: constraints.maxWidth < 400 ? 1 : 1.45,
+                      children: [
+                        _ReportStat(
+                          'Giá trị trong tủ hiện tại',
+                          vnd(totalValue),
+                          '${inventoryFoods.length} thực phẩm đang theo dõi',
+                          Icons.savings_outlined,
+                          Color(0xFFE8FBF4),
+                          _green,
+                        ),
+                        _ReportStat(
+                          'Tỉ trọng giá trị hết hạn',
+                          vnd(expiredValue),
+                          'Cần xử lý sớm',
+                          Icons.account_balance_wallet_outlined,
+                          Color(0xFFFFEFF0),
+                          Colors.redAccent,
+                        ),
+                        _ReportStat(
+                          'Giá trị đã hết hạn',
+                          '$wastePercent%',
+                          'Tỉ trọng trong giá trị tủ',
+                          Icons.emoji_events_outlined,
+                          Color(0xFFFFF8E5),
+                          Colors.orange,
+                        ),
+                        _ReportStat(
+                          'Thực phẩm có giá',
+                          '$pricedCount/${inventoryFoods.length}',
+                          'Có thông tin giá trị',
+                          Icons.sell_outlined,
+                          Color(0xFFFFEFF7),
+                          Colors.pinkAccent,
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Card(
@@ -3421,9 +5162,7 @@ class ReportsScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const SectionTitle(
-                            'Xu hướng lãng phí & tiết kiệm (VNĐ)',
-                          ),
+                          const SectionTitle('Xu hướng (dữ liệu minh họa)'),
                           const SizedBox(height: 18),
                           SizedBox(
                             height: 145,
@@ -3466,7 +5205,7 @@ class ReportsScreen extends StatelessWidget {
                       padding: const EdgeInsets.all(14),
                       child: Column(
                         children: const [
-                          SectionTitle('So sánh tháng đầu — tháng này'),
+                          SectionTitle('So sánh (dữ liệu minh họa)'),
                           SizedBox(height: 13),
                           Row(
                             children: [
@@ -3502,7 +5241,7 @@ class ReportsScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const SectionTitle('Lượng thực phẩm lãng phí (kg)'),
+                          const SectionTitle('Lãng phí (dữ liệu minh họa)'),
                           const SizedBox(height: 18),
                           SizedBox(
                             height: 140,
@@ -3528,7 +5267,7 @@ class ReportsScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: const [
-                          SectionTitle('Tỉ lệ giữ lại theo danh mục'),
+                          SectionTitle('Theo danh mục (dữ liệu minh họa)'),
                           SizedBox(height: 14),
                           _Retention('Rau củ', .82, Colors.green),
                           _Retention('Thịt cá', .88, Colors.redAccent),
@@ -3542,8 +5281,8 @@ class ReportsScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 15),
                   const SectionTitle(
-                    'Thành tựu đã mở khóa',
-                    trailing: '6 thành tựu',
+                    'Mục tiêu mẫu',
+                    trailing: 'Chưa theo dõi lịch sử',
                   ),
                   const SizedBox(height: 8),
                   const _Achievement(
@@ -3587,7 +5326,7 @@ class ReportsScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 9),
                         const Text(
-                          'Chia sẻ thành tích của bạn!',
+                          'Tóm tắt dữ liệu hiện tại',
                           style: TextStyle(
                             fontWeight: FontWeight.w800,
                             color: _ink,
@@ -3600,16 +5339,9 @@ class ReportsScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 12),
                         FilledButton.icon(
-                          onPressed: () =>
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Đã tạo ảnh thành tích để chia sẻ',
-                                  ),
-                                ),
-                              ),
+                          onPressed: null,
                           icon: const Icon(Icons.share, size: 17),
-                          label: const Text('Chia sẻ lên mạng xã hội'),
+                          label: const Text('Chia sẻ sắp ra mắt'),
                         ),
                       ],
                     ),
@@ -3673,7 +5405,12 @@ class _ReportStat extends StatelessWidget {
               color: _ink,
             ),
           ),
-          Text(note, style: const TextStyle(fontSize: 9, color: _muted)),
+          Text(
+            note,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 9, color: _muted),
+          ),
         ],
       ),
     ),
@@ -3811,7 +5548,7 @@ class _Achievement extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(Icons.check_circle, color: Color(0xFF20C997), size: 16),
+          const Icon(Icons.flag_outlined, color: Color(0xFF20C997), size: 18),
         ],
       ),
     ),

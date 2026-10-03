@@ -19,17 +19,32 @@ android {
         applicationId = "com.vineat.team.vineat_app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = maxOf(flutter.minSdkVersion, 24)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
     buildTypes {
+        debug {
+            // Keep local previews side-by-side with any previously installed
+            // ViNeat build instead of requiring an uninstall and data loss.
+            applicationIdSuffix = ".preview"
+        }
+        getByName("profile") {
+            // Keep AOT/profile measurements separate from both the preview
+            // runner and any older release install on the same emulator.
+            applicationIdSuffix = ".profile"
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

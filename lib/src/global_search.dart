@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'food_detail.dart';
+import 'food_image.dart';
 import 'inventory_store.dart';
 import 'recipe_detail.dart';
 
@@ -29,7 +30,7 @@ Future<void> showGlobalSearch(BuildContext context) async {
     );
     FoodSummary? original;
     for (final food in inventoryFoods) {
-      if (food.$1 == result.food!.name) {
+      if (food.id == result.food!.id) {
         original = food;
         break;
       }
@@ -38,15 +39,23 @@ Future<void> showGlobalSearch(BuildContext context) async {
       if (detailResult is FoodDetailData) {
         updateFoodInInventory(
           original,
-          (
-            detailResult.name,
-            '${detailResult.quantity} · ${detailResult.price}',
-            detailResult.status,
-            detailResult.image,
+          FoodSummary.fromLegacy(
+            id: original.id,
+            name: detailResult.name,
+            detail: '${detailResult.quantity} · ${detailResult.price}',
+            status: detailResult.status,
+            imageIndex: detailResult.image,
+            imagePath: original.imagePath,
+            note: detailResult.note,
+            expiryDate: detailResult.expiryValue ?? original.expiry,
           ),
         );
-      } else if (detailResult == true) {
+      } else if (detailResult == FoodRemovalResult.deleted) {
         removeFoodFromInventory(original);
+      } else if (detailResult == FoodRemovalResult.consumed) {
+        markFoodConsumed(original);
+      } else if (detailResult == FoodRemovalResult.discarded) {
+        markFoodConsumed(original, discarded: true);
       }
     }
   } else if (result.recipe != null) {
@@ -69,23 +78,14 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
   int tab = 0;
   String query = '';
 
-  List<FoodDetailData> get foods => inventoryFoods
-      .map(
-        (food) => FoodDetailData.fromSummary(
-          name: food.$1,
-          detail: food.$2,
-          status: food.$3,
-          image: food.$4,
-        ),
-      )
-      .toList();
+  List<FoodDetailData> get foods =>
+      inventoryFoods.map((food) => FoodDetailData.fromInventory(food)).toList();
 
   final recipes = <RecipeDetailData>[
     RecipeDetailData.fromSummary(
       name: 'Mì cay trứng lòng đào',
       time: '15 phút',
       level: 'Dễ',
-      match: '90% có sẵn',
       image: 10,
       ingredientsText: 'Mì · Trứng gà · Hành lá · Nước mắm',
     ),
@@ -93,7 +93,6 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
       name: 'Canh rau muống nấu tôm',
       time: '15 phút',
       level: 'Dễ',
-      match: '100% có sẵn',
       image: 11,
       ingredientsText: 'Rau muống · Tôm sú · Hành lá',
     ),
@@ -101,7 +100,6 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
       name: 'Bò xào cải thảo',
       time: '20 phút',
       level: 'Dễ',
-      match: '80% có sẵn',
       image: 12,
       ingredientsText: 'Thịt bò Mỹ · Cải thảo · Dưa leo',
     ),
@@ -109,7 +107,6 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
       name: 'Bánh mì ốp la trứng gà',
       time: '10 phút',
       level: 'Dễ',
-      match: '75% có sẵn',
       image: 13,
       ingredientsText: 'Trứng gà · Bánh mì · Hành lá',
     ),
@@ -117,7 +114,6 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
       name: 'Cá basa kho tiêu',
       time: '25 phút',
       level: 'Vừa',
-      match: '90% có sẵn',
       image: 14,
       ingredientsText: 'Cá basa fillet · Nước mắm · Hành lá',
     ),
@@ -125,15 +121,13 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
       name: 'Salad cá thu dầu mè',
       time: '5 phút',
       level: 'Dễ',
-      match: '90% có sẵn',
       image: 15,
-      ingredientsText: 'Cà chua · Dưa leo · Hành lá',
+      ingredientsText: 'Cá thu · Dưa leo · Hành lá',
     ),
     RecipeDetailData.fromSummary(
       name: 'Đậu hũ sốt cà chua',
       time: '20 phút',
       level: 'Dễ',
-      match: '100% có sẵn',
       image: 4,
       ingredientsText: 'Đậu hũ · Cà chua · Hành lá',
     ),
@@ -141,7 +135,6 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
       name: 'Phở bò tái',
       time: '45 phút',
       level: 'Khó',
-      match: '60% có sẵn',
       image: 2,
       ingredientsText: 'Thịt bò Mỹ · Bánh phở · Hành lá',
     ),
@@ -225,6 +218,8 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
                       itemBuilder: (_, index) => tab == 0
                           ? _ResultTile(
                               image: foundFoods[index].image,
+                              foodImagePath: foundFoods[index].imagePath,
+                              foodName: foundFoods[index].name,
                               title: foundFoods[index].name,
                               subtitle:
                                   '${foundFoods[index].quantity} · ${foundFoods[index].price} · ${foundFoods[index].category}',
@@ -311,9 +306,13 @@ class _ResultTile extends StatelessWidget {
     required this.subtitle,
     required this.badge,
     required this.onTap,
+    this.foodName,
+    this.foodImagePath,
   });
   final int image;
   final String title, subtitle, badge;
+  final String? foodName;
+  final String? foodImagePath;
   final VoidCallback onTap;
   @override
   Widget build(BuildContext context) => InkWell(
@@ -324,12 +323,21 @@ class _ResultTile extends StatelessWidget {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(9),
-            child: Image.asset(
-              '$_assets${image == 0 ? 'search-image' : 'search-image($image)'}',
-              width: 48,
-              height: 48,
-              fit: BoxFit.cover,
-            ),
+            child: foodName == null
+                ? Image.asset(
+                    '$_assets${image == 0 ? 'search-image' : 'search-image($image)'}',
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.cover,
+                  )
+                : FoodImage(
+                    name: foodName!,
+                    assetIndex: image,
+                    imagePath: foodImagePath,
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.cover,
+                  ),
           ),
           const SizedBox(width: 11),
           Expanded(

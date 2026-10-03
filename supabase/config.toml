@@ -1,0 +1,31 @@
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = [
+  "com.vineat.team.vineat_app://login-callback",
+  "com.vineat.team.vineat_app.preview://login-callback",
+  "com.vineat.team.vineat_app.profile://login-callback",
+]
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = false
+otp_length = 6
+otp_expiry = 3600
+
+[auth.email.template.magic_link]
+subject = "Mã đăng nhập ViNeat"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.confirmation]
+subject = "Mã xác nhận ViNeat"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.email_change]
+subject = "Xác nhận đổi email ViNeat"
+content_path = "./supabase/templates/email_change.html"
+
+[functions.household]
+verify_jwt = true
